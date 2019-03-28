@@ -109,23 +109,21 @@ def run_build_script() {
 
 def save_build_data(build_data=[:]) {
     stage('save_build_data') {
-        steps {
-            script {
-                def default_data = [
-                    build_number: "${BUILD_NUMBER}",
-                    branch_name: "${BRANCH_NAME}",
-                    git_revision: "${GIT_REVISION}",
-                    upstream_build_url: "${BUILD_URL}",
-                    upstream_job_name: "${JOB_NAME}",
-                    upstream_job_base_name: "${JOB_BASE_NAME}",
-                    artifact_version: "${BUILD_VERSION}"
-                    ]
-                def data = default_data + build_data
-                sh 'rm -f artifact_data.yml'
-                writeYaml file: 'artifact_data.yml', data: data
-                archiveArtifacts allowEmptyArchive: true, artifacts: 'artifact_data.yml', fingerprint: true, onlyIfSuccessful: true
-            } //script
-        }
+        script {
+            def default_data = [
+                build_number: "${BUILD_NUMBER}",
+                branch_name: "${BRANCH_NAME}",
+                git_revision: "${GIT_REVISION}",
+                upstream_build_url: "${BUILD_URL}",
+                upstream_job_name: "${JOB_NAME}",
+                upstream_job_base_name: "${JOB_BASE_NAME}",
+                artifact_version: "${BUILD_VERSION}"
+                ]
+            def data = default_data + build_data
+            sh 'rm -f artifact_data.yml'
+            writeYaml file: 'artifact_data.yml', data: data
+            archiveArtifacts allowEmptyArchive: true, artifacts: 'artifact_data.yml', fingerprint: true, onlyIfSuccessful: true
+        } //script
     }// Gather artifacts
 }
 
