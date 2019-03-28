@@ -77,10 +77,12 @@ EOF
     }//stage
 }
 
-def run_build_script(docker_net_opt='--net=container:xvt', docker_volume_opt='--volumes-from xvt_jenkins', docker_image='xvtsolutions/python3-aws-ansible:2.7.9') {
+def run_build_script(arg1=[:]) {
+    def default_arg = ['docker_net_opt': '--net=container:xvt', 'docker_volume_opt': '--volumes-from xvt_jenkins', 'docker_image': 'xvtsolutions/python3-aws-ansible:2.7.9']
+    def arg = default_arg + arg1
     stage('run_build_script') {
         script {
-            docker.image(docker_image).withRun("-u root ${docker_volume_opt} ${docker_net_opt}") { c->
+            docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt}") { c->
                 if (fileExists('generate_add_user_script.sh')) {
                     sh "docker exec --workdir ${WORKSPACE} ${c.id} bash ./generate_add_user_script.sh"
                 }
