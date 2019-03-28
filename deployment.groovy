@@ -107,6 +107,17 @@ def run_build_script() {
     }//stage
 }
 
+def remove_file(file_name) {
+    if (isUnix()) {
+        sh "rm -f ${file_name} || true"
+    }
+    else {
+        powershell """Remove-Item -Path '${file_name}'
+        exit 0
+        """
+    }
+}
+
 def save_build_data(build_data=[:]) {
     stage('save_build_data') {
         script {
@@ -120,7 +131,7 @@ def save_build_data(build_data=[:]) {
                 artifact_version: "${BUILD_VERSION}"
                 ]
             def data = default_data + build_data
-            sh 'rm -f artifact_data.yml'
+            remove_file('artifact_data.yml')
             writeYaml file: 'artifact_data.yml', data: data
             archiveArtifacts allowEmptyArchive: true, artifacts: 'artifact_data.yml', fingerprint: true, onlyIfSuccessful: true
         } //script
