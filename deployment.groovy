@@ -190,6 +190,7 @@ def is_sub_map(m0, m1, regex_match=[:]) {
     return output
 }
 
+
 def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
 //Get the param of the last success build of a job_name matching the
 //param_filter map.
@@ -204,7 +205,7 @@ def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
                 for (i=0; i < jobBuilds.size(); i++) {
                     def current_job = jobBuilds[i]
 
-		            if (! current_job.getResult().toString().equals("SUCCESS")) continue
+                    if (! current_job.getResult().toString().equals("SUCCESS")) continue
 
                     def current_parameters = current_job.getAction(ParametersAction)?.parameters
 
@@ -214,15 +215,22 @@ def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
                     }
 
                     if (is_sub_map(param_filter, current_param_kv, regex_match)) {
-                        output = current_param_kv
+                        //Merge values in description to param
+                        def job_description_lines = current_job.getDescription().split('<br/>')
+                        def job_description_map = [:]
+                        for (def i=0; i<job_description_lines.size(); i++) {
+                        	def _kvlist = job_description_lines[i].split(/\:[\s]*/)
+                        	job_description_map[_kvlist[0].replace(' ','')] = _kvlist[1].replace(' ','')
+                        }
+			            output = current_param_kv + job_description_map
                         break
                     }
                 }
             }// each job
-
             return output
         }//script
     }//stage
 }
+
 
 return this
