@@ -152,14 +152,14 @@ def load_upstream_build_data() {
             }//If
             // Parsing artifact data
             ARTIFACT_DATA = readYaml(file: 'artifact_data.yml')
-            if (ARTIFACT_DATA.artifact_filename) env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename
-            if (ARTIFACT_DATA.artifact_revision) env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision
-            if (ARTIFACT_DATA.git_revision) env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision
-            if (ARTIFACT_DATA.artifact_version) env.ARTIFACT_VERSION = ARTIFACT_DATA.artifact_version
-            if (ARTIFACT_DATA.build_number) env.UPSTREAM_BUILD_NUMBER = ARTIFACT_DATA.build_number
-            if (ARTIFACT_DATA.branch_name) env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name
-            if (ARTIFACT_DATA.upstream_build_url) env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url
-            if (ARTIFACT_DATA.upstream_job_name) env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name
+            env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename ?: null
+            env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision ?: null
+            env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision ?: (ARTIFACT_DATA.git_revision ?: null)
+            env.ARTIFACT_VERSION = ARTIFACT_DATA.artifact_version ?: null
+            env.UPSTREAM_BUILD_NUMBER = ARTIFACT_DATA.build_number ?: null
+            env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: null
+            env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: null
+            env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: null
         }//script
     }//stage
 }
@@ -210,7 +210,7 @@ def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
                     def current_parameters = current_job.getAction(ParametersAction)?.parameters
 
                     def current_param_kv = [:]
-                    for (param in current_parameters) {
+                    current_parameters.each { param ->
                         current_param_kv[param.name] = param.value
                     }
 
@@ -218,9 +218,11 @@ def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
                         //Merge values in description to param
                         def job_description_lines = current_job.getDescription().split('<br/>')
                         def job_description_map = [:]
-                        for (def i=0; i<job_description_lines.size(); i++) {
-                        	def _kvlist = job_description_lines[i].split(/\:[\s]*/)
-                        	job_description_map[_kvlist[0].replace(' ','')] = _kvlist[1].replace(' ','')
+                        job_description_lines.each { line ->
+                        	def _kvlist = line.split(/\:[\s]+/)
+                            if (_kvlist.size() == 2) {
+                                job_description_map[_kvlist[0].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'') ] = _kvlist[1].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'')
+                            }
                         }
 			            output = current_param_kv + job_description_map
                         break
