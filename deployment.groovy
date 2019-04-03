@@ -141,6 +141,7 @@ def save_build_data(build_data=[:]) {
 def load_upstream_build_data() {
     stage('load_upstream_build_data') {
         script {
+            try {
             if (env.UPSTREAM_BUILD_NUMBER == 'LAST_SAVED_BUILD') {
               copyArtifacts filter: 'artifact_data.yml', fingerprintArtifacts: true, flatten: true, projectName: "${UPSTREAM_JOB_NAME}", selector: latestSavedBuild()
             }
@@ -160,6 +161,9 @@ def load_upstream_build_data() {
             env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: null
             env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: null
             env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: null
+            } catch (Exception e) {
+                echo "Unable to load_upstream_build_data - ${e}"
+            }
         }//script
     }//stage
 }
