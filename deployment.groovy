@@ -82,6 +82,7 @@ def run_build_script(arg1=[:]) {
     def arg = default_arg + arg1
     stage('run_build_script') {
         script {
+            return "Temporary disable run build script"
             docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt}") { c->
                 if (fileExists('generate_add_user_script.sh')) {
                     sh "docker exec --workdir ${WORKSPACE} ${c.id} bash ./generate_add_user_script.sh"
