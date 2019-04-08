@@ -153,6 +153,9 @@ def load_upstream_build_data() {
             }//If
             // Parsing artifact data
             ARTIFACT_DATA = readYaml(file: 'artifact_data.yml')
+            ARTIFACT_DATA.each { k, v ->
+                ARTIFACT_DATA[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
+            }
             env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename ?: null
             env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision ?: null
             env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision ?: (ARTIFACT_DATA.git_revision ?: null)
@@ -161,6 +164,7 @@ def load_upstream_build_data() {
             env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: null
             env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: null
             env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: null
+
             } catch (Exception e) {
                 echo "Unable to load_upstream_build_data - ${e}"
             }
@@ -229,6 +233,9 @@ def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
                             }
                         }
 			            output = current_param_kv + job_description_map
+                        output.each { k, v ->
+                            output[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
+                        }
                         break
                     }
                 }
