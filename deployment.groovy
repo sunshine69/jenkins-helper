@@ -73,9 +73,11 @@ if [ "${VAULT}" != "" ]; then
     chmod 0600 ~/\\${VAULT_FILE}
     echo "Vault file: "
     ls -lha ~/\\${VAULT_FILE}
-    sed -i "s|git+ssh://git|https://${GITHUB_TOKEN}|g" requirements.yml
-    ./ansible-common/update-galaxy.py
 fi
+
+sed -i "s|git+ssh://git|https://${GITHUB_TOKEN}|g" requirements.yml
+./ansible-common/update-galaxy.py
+
 EOF
 '''
           sh 'chmod +x generate_aws_environment.sh'
