@@ -58,6 +58,13 @@ printf "[$PROFILE]
 aws_access_key_id = ${AWS_ACCESS_KEY_ID}
 aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}" > ~/.aws/credentials
 
+if [ "x${ROUTE53_AWS_ACCESS_KEY_ID}" != "x" ]; then
+    printf "[xvt_aws_route53]
+aws_access_key_id = ${ROUTE53_AWS_ACCESS_KEY_ID}
+aws_secret_access_key = ${ROUTE53_AWS_SECRET_ACCESS_KEY}" >> ~/.aws/credentials
+
+fi
+
 if [ "${VAULT}" != "" ]; then
     VAULT_FILE=\\$(grep -Po '(?<=vault_password_file = )[^\\s]+' ansible.cfg | sed 's/~\\///')
     echo "Vault file path: ~/\\${VAULT_FILE}"
@@ -66,9 +73,11 @@ if [ "${VAULT}" != "" ]; then
     chmod 0600 ~/\\${VAULT_FILE}
     echo "Vault file: "
     ls -lha ~/\\${VAULT_FILE}
-    sed -i "s|git+ssh://git|https://${GITHUB_TOKEN}|g" requirements.yml
-    ./ansible-common/update-galaxy.py
 fi
+
+sed -i "s|git+ssh://git|https://${GITHUB_TOKEN}|g" requirements.yml
+./ansible-common/update-galaxy.py
+
 EOF
 '''
           sh 'chmod +x generate_aws_environment.sh'
@@ -78,30 +87,35 @@ EOF
 }
 
 def run_build_script(arg1=[:]) {
-    def default_arg = ['docker_net_opt': '--net=container:xvt', 'docker_volume_opt': '--volumes-from xvt_jenkins', 'docker_image': 'xvtsolutions/python3-aws-ansible:2.7.9']
+    def default_arg = ['docker_net_opt': '--net=container:xvt', 'docker_volume_opt': '--volumes-from xvt_jenkins', 'docker_image': 'xvtsolutions/python3-aws-ansible:2.7.10', 'extra_build_scripts': [] ]
+
+    def default_build_scripts = [
+            'generate_add_user_script.sh',
+            'generate_aws_environment.sh'
+        ]
+
+    def run_as_user = ['default_user': 'jenkins', 'generate_add_user_script.sh': 'root']
+
     def arg = default_arg + arg1
+    def build_scripts = default_build_scripts + arg.extra_build_scripts
+
+    // run build.sh at last
+    build_scripts.add('build.sh')
+
     stage('run_build_script') {
         script {
             docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt}") { c->
-                if (fileExists('generate_add_user_script.sh')) {
-                    sh "docker exec --workdir ${WORKSPACE} ${c.id} bash ./generate_add_user_script.sh"
-                }
-                else {
-                    echo 'generate_add_user_script.sh does not exist - skipping'
-                }
-                if (fileExists('generate_aws_environment.sh')) {
-                    sh "docker exec --user jenkins --workdir ${WORKSPACE} ${c.id} ./generate_aws_environment.sh"
-                }
-                else {
-                    echo 'generate_aws_environment.sh does not exist - skipping'
-                }
-                if (fileExists('build.sh')) {
-                    sh "docker exec --user jenkins --workdir ${WORKSPACE} ${c.id} ./build.sh"
-                }
-                else {
-                    echo 'build.sh does not exist - skipping'
-                }
-                sh 'rm -rf build.sh add-user.sh ~/.aws ~/.ansible ubuntu || true'
+
+                build_scripts.each { script_name ->
+                    if (fileExists(script_name)) {
+                        def _run_as_user = run_as_user[script_name]?:run_as_user.default_user
+                        sh "docker exec --user ${_run_as_user} --workdir ${WORKSPACE} ${c.id} bash ./${script_name}"
+                        sh "rm -f ${script_name}"
+                    }
+                    else {
+                        echo 'generate_add_user_script.sh does not exist - skipping'
+                    }
+                }//each
             }//docker env
         }//script
     }//stage
@@ -156,14 +170,15 @@ def load_upstream_build_data() {
             ARTIFACT_DATA.each { k, v ->
                 ARTIFACT_DATA[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
             }
-            env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename ?: null
-            env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision ?: null
-            env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision ?: (ARTIFACT_DATA.git_revision ?: null)
-            env.ARTIFACT_VERSION = ARTIFACT_DATA.artifact_version ?: null
-            env.UPSTREAM_BUILD_NUMBER = ARTIFACT_DATA.build_number ?: null
-            env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: null
-            env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: null
-            env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: null
+            env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename ?: (env.ARTIFACT_FILENAME ?: null)
+            env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision ?: (env.UPSTREAM_REVISION ?: null)
+            env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision ?: (ARTIFACT_DATA.git_revision ?: (env.ARTIFACT_REVISION ?: null))
+            env.ARTIFACT_VERSION = ARTIFACT_DATA.artifact_version ?: (env.ARTIFACT_VERSION ?: null)
+            env.UPSTREAM_BUILD_NUMBER = ARTIFACT_DATA.build_number ?: (env.UPSTREAM_BUILD_NUMBER ?: null)
+            env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: (env.UPSTREAM_BRANCH_NAME ?: null)
+            env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: (env.UPSTREAM_BUILD_URL ?: null)
+            env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: (env.UPSTREAM_JOB_NAME ?: null)
+            env.ARTIFACT_CLASS = ARTIFACT_DATA.artifact_class ?: (env.ARTIFACT_CLASS ?: null)
 
             } catch (Exception e) {
                 echo "Unable to load_upstream_build_data - ${e}"
