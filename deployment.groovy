@@ -170,15 +170,15 @@ def load_upstream_build_data() {
             ARTIFACT_DATA.each { k, v ->
                 ARTIFACT_DATA[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
             }
-            env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename ?: null
-            env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision ?: null
-            env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision ?: (ARTIFACT_DATA.git_revision ?: null)
-            env.ARTIFACT_VERSION = ARTIFACT_DATA.artifact_version ?: null
-            env.UPSTREAM_BUILD_NUMBER = ARTIFACT_DATA.build_number ?: null
-            env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: null
-            env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: null
-            env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: null
-            env.ARTIFACT_CLASS = ARTIFACT_DATA.artifact_class ?: null
+            env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename ?: (env.ARTIFACT_FILENAME ?: null)
+            env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision ?: (env.UPSTREAM_REVISION ?: null)
+            env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision ?: (ARTIFACT_DATA.git_revision ?: (env.ARTIFACT_REVISION ?: null))
+            env.ARTIFACT_VERSION = ARTIFACT_DATA.artifact_version ?: (env.ARTIFACT_VERSION ?: null)
+            env.UPSTREAM_BUILD_NUMBER = ARTIFACT_DATA.build_number ?: (env.UPSTREAM_BUILD_NUMBER ?: null)
+            env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: (env.UPSTREAM_BRANCH_NAME ?: null)
+            env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: (env.UPSTREAM_BUILD_URL ?: null)
+            env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: (env.UPSTREAM_JOB_NAME ?: null)
+            env.ARTIFACT_CLASS = ARTIFACT_DATA.artifact_class ?: (env.ARTIFACT_CLASS ?: null)
 
             } catch (Exception e) {
                 echo "Unable to load_upstream_build_data - ${e}"
