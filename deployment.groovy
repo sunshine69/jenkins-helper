@@ -113,7 +113,7 @@ def run_build_script(arg1=[:]) {
                         sh "rm -f ${script_name}"
                     }
                     else {
-                        echo 'generate_add_user_script.sh does not exist - skipping'
+                        echo "${script_name} does not exist - skipping"
                     }
                 }//each
             }//docker env
@@ -130,6 +130,25 @@ def remove_file(file_name) {
         exit 0
         """
     }
+}
+
+def apply_maintenance_policy_per_branch() {
+
+    echo "BRANCH_NAME: ${env.BRANCH_NAME}"
+
+    if ( env.BRANCH_NAME ==~ /release.*/ ) {
+        echo "Process branch matches 'release'"
+        properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: ''))])
+    }
+    else if (env.BRANCH_NAME == "develop") {
+        echo "Process branch matches 'develop'"
+        properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '7', daysToKeepStr: '', numToKeepStr: ''))])
+    }
+    else {
+        echo "Process branch others than 'develop', 'release-XXX'"
+        properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '1', daysToKeepStr: '', numToKeepStr: ''))])
+    }
+
 }
 
 def save_build_data(build_data=[:]) {
