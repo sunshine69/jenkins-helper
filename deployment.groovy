@@ -87,17 +87,19 @@ EOF
 }
 
 def run_build_script(arg1=[:]) {
-    def default_arg = ['docker_net_opt': '--net=container:xvt', 'docker_volume_opt': '--volumes-from xvt_jenkins', 'docker_image': 'xvtsolutions/python3-aws-ansible:2.7.10', 'extra_build_scripts': [] ]
+    def default_arg = ['docker_net_opt': '--net=container:xvt', 'docker_volume_opt': '--volumes-from xvt_jenkins', 'docker_image': 'xvtsolutions/python3-aws-ansible:2.7.10', 'extra_build_scripts': [], 'run_as_user': [:] ]
 
     def default_build_scripts = [
             'generate_add_user_script.sh',
             'generate_aws_environment.sh'
         ]
 
-    def run_as_user = ['default_user': 'jenkins', 'generate_add_user_script.sh': 'root']
-
     def arg = default_arg + arg1
     def build_scripts = default_build_scripts + arg.extra_build_scripts
+
+    def current_user = sh(returnStdout: true, script: "whoami").trim()
+    def default_run_as_user = ['default_user': current_user, 'generate_add_user_script.sh': 'root']
+    def run_as_user = arg.run_as_user + default_run_as_user
 
     // run build.sh at last
     build_scripts.add('build.sh')
@@ -105,7 +107,6 @@ def run_build_script(arg1=[:]) {
     stage('run_build_script') {
         script {
             docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt}") { c->
-
                 build_scripts.each { script_name ->
                     if (fileExists(script_name)) {
                         def _run_as_user = run_as_user[script_name]?:run_as_user.default_user
