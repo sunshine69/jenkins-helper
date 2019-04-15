@@ -1,4 +1,7 @@
 // This Jenkinsfile is for building a generic dotnetcore project with sonar scan
+// If there is a folder `tools/Minicover` then it will try to restore and do the
+// instrumentation coverage as well
+
 pipeline {
     agent { label 'dotnetcore-docker' }
     stages {
@@ -8,13 +11,13 @@ pipeline {
                     GIT_REVISION = sh(returnStdout: true, script: """##@echo off
                         git rev-parse --short HEAD"""
                     ).trim()
-                    def PWD = pwd()
-                    echo "Check out REVISION: $GIT_REVISION on $PWD"
 
-                    BUILD_VERSION_PREFIX = "${GIT_BRANCH}-${GIT_REVISION}-".replace('/', '-')
+                    BUILD_VERSION_PREFIX = "${BRANCH_NAME}-${GIT_REVISION}-".replace('/', '-')
                     env.BUILD_VERSION = VersionNumber projectStartDate: '2018-11-07', versionNumberString: "${BUILD_NUMBER}", versionPrefix: "${BUILD_VERSION_PREFIX}", worstResultForIncrement: 'SUCCESS'
+
                     echo "Version:  $BUILD_VERSION"
                     echo "Revision: $GIT_REVISION"
+
                     checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: true, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'jenkins-helper'], [$class: 'CloneOption', noTags: true, reference: '', shallow: true]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'xvt-product-registration1', url: 'git@github.com:XVTSolutions/jenkins-helper.git']]])
                     utils = load("${WORKSPACE}/jenkins-helper/deployment.groovy")
                     utils.generate_add_user_script()
@@ -25,18 +28,27 @@ pipeline {
         stage('Generating Deploy Scripts') {
             steps {
                 script {
+                    //env.SONAR_PROJECT = "commonwealth-errcd"
                     withCredentials([usernamePassword(credentialsId: 'sonar_login', passwordVariable: 'SONAR_TOKEN', usernameVariable: 'SONAR_URL')]) {
                     sh '''cat <<EOF > build.sh
-#!/bin/bash -e
+#!/bin/bash -xe
 
-cd tools/Minicover/
-dotnet restore Minicover.csproj
+if [ -d "tools/Minicover" ]; then
+    echo "Restore Minicover.cproj"
+    cd tools/Minicover/
+    dotnet restore Minicover.csproj
+else
+    echo "tools/Minicover does not exist, skiping restore Minicover"
+fi
 
 cd ${WORKSPACE}
 
+echo "Restore nuget.config"
 dotnet restore --configfile "nuget.config"
 
 # Build/Publish with restore (in case the cache isn't complete)
+
+echo "Start sonar scanner"
 dotnet sonarscanner begin \
         /k:"${SONAR_PROJECT}" \
         /n:"${SONAR_PROJECT}" \
@@ -46,44 +58,51 @@ dotnet sonarscanner begin \
         /d:sonar.cs.opencover.reportsPaths="test/opencovercoverage.xml" \
         /d:sonar.coverage.exclusions="test/**/*"
 
+echo "dotnet build --no-restore"
 dotnet build --no-restore
 
-# Start instrumentation
-cd tools/Minicover/
-dotnet restore Minicover.csproj
-dotnet minicover instrument --workdir ${WORKSPACE} --assemblies test/**/*.dll --sources src/**/*.cs
-dotnet minicover reset
+echo "Start instrumentation"
+if [ -d "tools/Minicover" ]; then
+    cd tools/Minicover/
+    dotnet restore Minicover.csproj
+    dotnet minicover instrument --workdir ${WORKSPACE} --assemblies test/**/*.dll --sources src/**/*.cs
+    dotnet minicover reset
+else
+    echo "tools/Minicover does not exist, skiping instrumentation"
+fi
 
 cd ${WORKSPACE}
 
-# Run each of the test projects and save the results
+echo "Run each of the test projects and save the results"
 for csproj in ./test/**/*.csproj; \
     do \
-        trx=$(basename $csproj); \
+        trx=$(basename \\$csproj); \
         dotnet test \
             --no-build \
-            --logger "trx;LogFileName=test/$trx.trx" \
-            $csproj; \
-        exit_status=$?; \
-        if [ ! $exit_status -eq 0 ]; \
+            --logger "trx;LogFileName=test/\\$trx.trx" \
+            \\$csproj; \
+        exit_status=\\$?; \
+        if [ ! \\$exit_status -eq 0 ]; \
         then \
-            exit $exit_status; \
+            exit \\$exit_status; \
         fi; \
 done
 
-# Uninstrument and generate reports
-cd tools/Minicover
+echo "Uninstrument and generate reports"
+if [ -d "tools/Minicover" ]; then
+    cd tools/Minicover
+    dotnet minicover uninstrument --workdir /src
+    dotnet minicover report --workdir ${WORKSPACE} --threshold 0 || true
+    dotnet minicover opencoverreport --workdir ${WORKSPACE} --threshold 0 || true
 
-dotnet minicover uninstrument --workdir /src
-dotnet minicover report --workdir ${WORKSPACE} --threshold 0 || true
-dotnet minicover opencoverreport --workdir ${WORKSPACE} --threshold 0 || true
+    # Copy the Coverage results to the /test folder
+    mkdir -p ${WORKSPACE}/test
+    cp *coverage.* ${WORKSPACE}/test/
+else
+    echo "tools/Minicover does not exist, skiping uninstrument and generate reports"
+fi
 
-# Copy the Coverage results to the /test folder
-
-mkdir -p ${WORKSPACE}/test
-
-cp *coverage.* ${WORKSPACE}/test/
-
+echo "sonar scan end"
 dotnet sonarscanner end \
         /d:sonar.login="${SONAR_TOKEN}"
 
@@ -99,7 +118,9 @@ EOF
         stage('Run the generated scripts within the docker environment') {
             steps {
                 script {
-                    utils.run_build_script(['docker_image': 'xvtsolutions/dotnet-sdk-sonar-scanner:2.1.603'])
+                    utils.run_build_script(['docker_image': 'xvtsolutions/dotnet-sdk-sonar-scanner:2.1.603',
+                    'docker_net_opt': '',
+                    'docker_volume_opt': "-v ${WORKSPACE}:${WORKSPACE}"])
                 } //script
             } // step
         } // stage
@@ -107,6 +128,7 @@ EOF
     post {
         always {
             script {
+                utils.apply_maintenance_policy_per_branch()
                 currentBuild.description = """REVISION: ${GIT_REVISION}<br/>
 """
             }
@@ -117,10 +139,7 @@ EOF
             }
         }
         failure {
-            emailext attachLog: true, attachmentsPattern: "${BUILD_TAG}.log", body: """JOB $JOB_NAME on $NODE_NAME has finished.
-BUILD_NUMBER: ${BUILD_NUMBER}
-BUILD_URL: ${BUILD_URL}
-""", compressLog: true, subject: "JOB $JOB_NAME on $NODE_NAME has finished", to: 'ops@xvt.com.au'
+            echo "Failure"
         }
         cleanup {
           script {
