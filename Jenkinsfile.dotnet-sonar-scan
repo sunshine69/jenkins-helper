@@ -8,19 +8,23 @@ pipeline {
         stage('Load jenkins-helper') {
             steps {
                 script {
-                    GIT_REVISION = sh(returnStdout: true, script: """##@echo off
-                        git rev-parse --short HEAD"""
-                    ).trim()
+                    def scmVars = checkout([$class: 'GitSCM', branches: [[name: "*/${PROJECT_GIT_BRANCH}"]], doGenerateSubmoduleConfigurations: true, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: "PROJECT_SOURCE"], [$class: 'CloneOption', noTags: true, reference: '', shallow: true]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'xvt-product-registration1', url: "${PROJECT_GIT_URL}"]]])
 
+                    dir('PROJECT_SOURCE/') {
+                        env.GIT_REVISION = sh(returnStdout: true, script: """##@echo off
+                        git rev-parse --short HEAD"""
+                        ).trim()
+                    }
+
+                    env.BRANCH_NAME = scmVars.GIT_BRANCH.replace('origin/','')
                     BUILD_VERSION_PREFIX = "${BRANCH_NAME}-${GIT_REVISION}-".replace('/', '-')
                     env.BUILD_VERSION = VersionNumber projectStartDate: '2018-11-07', versionNumberString: "${BUILD_NUMBER}", versionPrefix: "${BUILD_VERSION_PREFIX}", worstResultForIncrement: 'SUCCESS'
 
                     echo "Version:  $BUILD_VERSION"
                     echo "Revision: $GIT_REVISION"
 
-                    checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: true, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'jenkins-helper'], [$class: 'CloneOption', noTags: true, reference: '', shallow: true]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'xvt-product-registration1', url: 'git@github.com:XVTSolutions/jenkins-helper.git']]])
+                    //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: true, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'jenkins-helper'], [$class: 'CloneOption', noTags: true, reference: '', shallow: true]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'xvt-product-registration1', url: 'git@github.com:XVTSolutions/jenkins-helper.git']]])
                     utils = load("${WORKSPACE}/jenkins-helper/deployment.groovy")
-                    utils.generate_add_user_script()
                 }//script
             }//steps
         }//stage
@@ -28,10 +32,14 @@ pipeline {
         stage('Generating Deploy Scripts') {
             steps {
                 script {
+                    dir('PROJECT_SOURCE') {
+                    utils.generate_add_user_script()
                     //env.SONAR_PROJECT = "commonwealth-errcd"
                     withCredentials([usernamePassword(credentialsId: 'sonar_login', passwordVariable: 'SONAR_TOKEN', usernameVariable: 'SONAR_URL')]) {
                     sh '''cat <<EOF > build.sh
 #!/bin/bash -xe
+
+WORK_DIR=\\$(pwd)
 
 if [ -d "tools/Minicover" ]; then
     echo "Restore Minicover.cproj"
@@ -41,7 +49,7 @@ else
     echo "tools/Minicover does not exist, skiping restore Minicover"
 fi
 
-cd ${WORKSPACE}
+cd \\${WORK_DIR}
 
 echo "Restore nuget.config"
 dotnet restore --configfile "nuget.config"
@@ -65,13 +73,13 @@ echo "Start instrumentation"
 if [ -d "tools/Minicover" ]; then
     cd tools/Minicover/
     dotnet restore Minicover.csproj
-    dotnet minicover instrument --workdir ${WORKSPACE} --assemblies test/**/*.dll --sources src/**/*.cs
+    dotnet minicover instrument --workdir \\${WORK_DIR} --assemblies test/**/*.dll --sources src/**/*.cs
     dotnet minicover reset
 else
     echo "tools/Minicover does not exist, skiping instrumentation"
 fi
 
-cd ${WORKSPACE}
+cd \\${WORK_DIR}
 
 echo "Run each of the test projects and save the results"
 for csproj in ./test/**/*.csproj; \
@@ -92,12 +100,12 @@ echo "Uninstrument and generate reports"
 if [ -d "tools/Minicover" ]; then
     cd tools/Minicover
     dotnet minicover uninstrument --workdir /src
-    dotnet minicover report --workdir ${WORKSPACE} --threshold 0 || true
-    dotnet minicover opencoverreport --workdir ${WORKSPACE} --threshold 0 || true
+    dotnet minicover report --workdir \\${WORK_DIR} --threshold 0 || true
+    dotnet minicover opencoverreport --workdir \\${WORK_DIR} --threshold 0 || true
 
     # Copy the Coverage results to the /test folder
-    mkdir -p ${WORKSPACE}/test
-    cp *coverage.* ${WORKSPACE}/test/
+    mkdir -p \\${WORK_DIR}/test
+    cp *coverage.* \\${WORK_DIR}/test/
 else
     echo "tools/Minicover does not exist, skiping uninstrument and generate reports"
 fi
@@ -111,6 +119,7 @@ EOF
                     }
                     sh 'chmod +x build.sh'
                     sh 'cat build.sh'
+                    }//dir('PROJECT_SOURCE')
                 }//script
             }//steps
         }//stage
@@ -118,9 +127,11 @@ EOF
         stage('Run the generated scripts within the docker environment') {
             steps {
                 script {
-                    utils.run_build_script(['docker_image': 'xvtsolutions/dotnet-sdk-sonar-scanner:2.1.603',
-                    'docker_net_opt': '',
-                    'docker_volume_opt': "-v ${WORKSPACE}:${WORKSPACE}"])
+                    dir('PROJECT_SOURCE') {
+                        utils.run_build_script(['docker_image': 'xvtsolutions/dotnet-sdk-sonar-scanner:2.1.603',
+                        'docker_net_opt': '',
+                        'docker_volume_opt': "-v ${WORKSPACE}/PROJECT_SOURCE:${WORKSPACE}/PROJECT_SOURCE"])
+                    }//dir
                 } //script
             } // step
         } // stage

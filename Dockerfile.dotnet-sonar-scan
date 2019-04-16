@@ -1,0 +1,70 @@
+FROM xvtsolutions/dotnet-sdk-sonar-scanner:2.1.603
+
+WORKDIR /src
+
+# Copy in the Minicover Project file. NB: Will need to change source location
+COPY ["tools/Minicover/Minicover.csproj", "/Minicover/"]
+WORKDIR /Minicover
+RUN dotnet restore Minicover.csproj
+WORKDIR /src
+
+COPY . .
+
+RUN pwd ; ls -lha
+
+RUN dotnet restore --configfile "nuget.config"
+
+ARG project
+ARG version
+
+ARG threshold=0
+
+ARG sonarUrl
+ARG sonarToken
+
+# Build/Publish with restore (in case the cache isn't complete)
+RUN dotnet sonarscanner begin \
+        /k:"${project}" \
+        /n:"${project}" \
+        /v:"${version}" \
+        /d:sonar.host.url="${sonarUrl}" \
+        /d:sonar.login="${sonarToken}" \
+        /d:sonar.cs.opencover.reportsPaths="/test/opencovercoverage.xml" \
+        /d:sonar.coverage.exclusions="test/**/*"
+
+RUN dotnet build --no-restore
+
+# Start instrumentation
+WORKDIR /Minicover
+RUN dotnet restore Minicover.csproj
+RUN dotnet minicover instrument --workdir /src --assemblies test/**/*.dll --sources src/**/*.cs
+RUN dotnet minicover reset
+WORKDIR /src
+
+# Run each of the test projects and save the results
+RUN for csproj in ./test/**/*.csproj; \
+    do \
+        trx=$(basename $csproj); \
+        dotnet test \
+            --no-build \
+            --logger "trx;LogFileName=/test/$trx.trx" \
+            $csproj; \
+        exit_status=$?; \
+        if [ ! $exit_status -eq 0 ]; \
+        then \
+            exit $exit_status; \
+        fi; \
+    done
+
+# Uninstrument and generate reports
+WORKDIR /Minicover
+RUN dotnet minicover uninstrument --workdir /src
+RUN dotnet minicover report --workdir /src --threshold 0 || true
+RUN dotnet minicover opencoverreport --workdir /src --threshold 0 || true
+WORKDIR /src
+
+# Copy the Coverage results to the /test folder
+RUN cp *coverage.* /test/
+
+RUN dotnet sonarscanner end \
+        /d:sonar.login="${sonarToken}"
