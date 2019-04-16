@@ -33,7 +33,7 @@ pipeline {
             steps {
                 script {
                     dir('PROJECT_SOURCE') {
-                        sh "cp ../jenkins-helper/Minicover.csproj tools/Minicover/Minicover.csproj"
+                        sh "mkdir -p tools/Minicover >/dev/null 2>&1 ; cp ../jenkins-helper/Minicover.csproj tools/Minicover/Minicover.csproj"
                         withCredentials([usernamePassword(credentialsId: 'sonar_login', passwordVariable: 'SONAR_TOKEN', usernameVariable: 'SONAR_URL')]) {
                             sh """docker build -t dotnet-sonar-scan:${BUILD_VERSION} \
                             -f ${WORKSPACE}/jenkins-helper/Dockerfile.dotnet-sonar-scan \
