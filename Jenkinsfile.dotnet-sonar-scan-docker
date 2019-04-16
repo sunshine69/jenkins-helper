@@ -1,0 +1,73 @@
+// This Jenkinsfile is for building a generic dotnetcore project with sonar scan
+// This use the dockerfile to build
+pipeline {
+    agent { label 'dotnetcore-docker' }
+    stages {
+        stage('Load jenkins-helper') {
+            steps {
+                script {
+                    //sh "rm -rf PROJECT_SOURCE"
+                    def scmVars = checkout([$class: 'GitSCM', branches: [[name: "*/${PROJECT_GIT_BRANCH}"]], doGenerateSubmoduleConfigurations: true, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: "PROJECT_SOURCE"], [$class: 'CloneOption', noTags: true, reference: '', shallow: true]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'xvt-product-registration1', url: "${PROJECT_GIT_URL}"]]])
+
+                    dir('PROJECT_SOURCE/') {
+                        env.GIT_REVISION = sh(returnStdout: true, script: """##@echo off
+                        git rev-parse --short HEAD"""
+                        ).trim()
+                    }
+
+                    env.BRANCH_NAME = scmVars.GIT_BRANCH.replace('origin/','')
+                    BUILD_VERSION_PREFIX = "2.2."
+                    env.BUILD_VERSION = VersionNumber projectStartDate: '2018-11-07', versionNumberString: "${BUILD_NUMBER}-${GIT_REVISION}", versionPrefix: "${BUILD_VERSION_PREFIX}", worstResultForIncrement: 'SUCCESS'
+
+                    echo "Version:  $BUILD_VERSION"
+                    echo "Revision: $GIT_REVISION"
+
+                    //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: true, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'jenkins-helper'], [$class: 'CloneOption', noTags: true, reference: '', shallow: true]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'xvt-product-registration1', url: 'git@github.com:XVTSolutions/jenkins-helper.git']]])
+                    utils = load("${WORKSPACE}/jenkins-helper/deployment.groovy")
+                }//script
+            }//steps
+        }//stage
+
+        stage('Generating Deploy Scripts') {
+            steps {
+                script {
+                    dir('PROJECT_SOURCE') {
+                        sh "cp ../jenkins-helper/Minicover.csproj tools/Minicover/Minicover.csproj"
+                        withCredentials([usernamePassword(credentialsId: 'sonar_login', passwordVariable: 'SONAR_TOKEN', usernameVariable: 'SONAR_URL')]) {
+                            sh """docker build -t dotnet-sonar-scan:${BUILD_VERSION} \
+                            -f ${WORKSPACE}/jenkins-helper/Dockerfile.dotnet-sonar-scan \
+                            --build-arg project=${SONAR_PROJECT} \
+                            --build-arg version=${BUILD_VERSION} \
+                            --build-arg sonarUrl=${SONAR_URL} \
+                            --build-arg sonarToken=${SONAR_TOKEN} ."""
+                        }
+                    }//dir('PROJECT_SOURCE')
+                }//script
+            }//steps
+        }//stage
+
+    } // stages
+    post {
+        always {
+            script {
+                utils.apply_maintenance_policy_per_branch()
+                currentBuild.description = """REVISION: ${GIT_REVISION}<br/>
+"""
+            }
+        }
+        success {
+            script {
+              echo 'Success!'
+            }
+        }
+        failure {
+            echo "Failure"
+        }
+        cleanup {
+          script {
+            sh "rm -f ${BUILD_TAG}.log"
+            sh "docker rmi dotnet-sonar-scan:${BUILD_VERSION} || true"
+          }//script
+        }//cleanup
+    }
+} // pipeline
