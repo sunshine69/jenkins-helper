@@ -52,8 +52,9 @@ pipeline {
         always {
             script {
                 utils.apply_maintenance_policy_per_branch()
-                currentBuild.description = """REVISION: ${GIT_REVISION}<br/>
-"""
+                currentBuild.description = """BUILD_VERSION: ${BUILD_VERSION}<br/>
+SONAR_PROJECT: ${SONAR_PROJECT}<br/>
+PROJECT_GIT_BRANCH: ${PROJECT_GIT_BRANCH}"""
             }
         }
         success {
