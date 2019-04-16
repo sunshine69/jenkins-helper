@@ -37,8 +37,8 @@ RUN dotnet build --no-restore
 # Start instrumentation
 WORKDIR /Minicover
 RUN dotnet restore Minicover.csproj
-RUN dotnet minicover instrument --workdir /src --assemblies test/**/*.dll --sources src/**/*.cs
-RUN dotnet minicover reset
+RUN dotnet minicover instrument --workdir /src --assemblies test/**/*.dll --sources src/**/*.cs || true
+RUN dotnet minicover reset || true
 WORKDIR /src
 
 # Run each of the test projects and save the results
@@ -58,7 +58,7 @@ RUN for csproj in ./test/**/*.csproj; \
 
 # Uninstrument and generate reports
 WORKDIR /Minicover
-RUN dotnet minicover uninstrument --workdir /src
+RUN dotnet minicover uninstrument --workdir /src || true
 RUN dotnet minicover report --workdir /src --threshold 0 || true
 RUN dotnet minicover opencoverreport --workdir /src --threshold 0 || true
 WORKDIR /src
