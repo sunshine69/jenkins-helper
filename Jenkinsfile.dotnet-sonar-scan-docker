@@ -1,5 +1,6 @@
 // This Jenkinsfile is for building a generic dotnetcore project with sonar scan
 // This use the dockerfile to build
+// Status: Working
 pipeline {
     agent { label 'dotnetcore-docker' }
     stages {

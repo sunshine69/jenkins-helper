@@ -106,7 +106,14 @@ def run_build_script(arg1=[:]) {
 
     stage('run_build_script') {
         script {
-            def DOCKER_WORKSPACE = arg.docker_volume_opt.replaceAll(/-v[\s]+/,'').split(':')[1]
+            def DOCKER_WORKSPACE = null
+            try {
+                DOCKER_WORKSPACE = arg.docker_volume_opt.replaceAll(/-v[\s]+/,'').split(':')[1]
+            }
+            catch (Exception ex) {
+                echo "${ex}"
+                DOCKER_WORKSPACE = "${WORKSPACE}"
+            }
 
             docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt}") { c->
                 build_scripts.each { script_name ->

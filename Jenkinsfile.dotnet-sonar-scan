@@ -2,6 +2,10 @@
 // If there is a folder `tools/Minicover` then it will try to restore and do the
 // instrumentation coverage as well
 
+// Status: Working but requires changes in the original repo as we do not build
+// using user root some permissions is not granted.
+// Not in use for now
+
 pipeline {
     agent { label 'dotnetcore-docker' }
     stages {
