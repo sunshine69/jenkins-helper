@@ -1,3 +1,8 @@
+# This is generic sonar scan for dotnet project process using docker build.
+# The docker image below has all sonar tools and OS platfor to run sonar scan
+# client. We just copy the src over and run the scan command in this dockerfile
+
+# This file is used in enkinsfile.dotnet-sonar-scan-docker
 FROM xvtsolutions/dotnet-sdk-sonar-scanner:2.1.603
 
 WORKDIR /src

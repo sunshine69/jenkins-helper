@@ -4,7 +4,8 @@
 
 // Status: Working but requires changes in the original repo as we do not build
 // using user root some permissions is not granted.
-// Not in use for now
+
+// NOT IN USE for now
 
 pipeline {
     agent { label 'dotnetcore-docker' }
