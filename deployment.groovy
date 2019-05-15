@@ -246,7 +246,7 @@ def is_sub_map(m0, m1, regex_match=[:]) {
 def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
 //Get the param of the last success build of a job_name matching the
 //param_filter map.
-    stage('get_build_by_name_env') {
+    stage('get_build_param_by_name') {
         script {
             def output = [:]
             def selected_build = null
