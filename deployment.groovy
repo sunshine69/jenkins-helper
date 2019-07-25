@@ -87,6 +87,9 @@ fi
 sed -i "s|git+ssh://git|https://${GITHUB_TOKEN}|g" requirements.yml
 ./ansible-common/update-galaxy.py
 
+ls -lha ~/.aws/
+echo "Completed run generate_aws_environment.sh"
+
 EOF
 '''
           sh 'chmod +x generate_aws_environment.sh'
