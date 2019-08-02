@@ -65,12 +65,16 @@ aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
 
 [xvt_aws]
 aws_access_key_id = ${AWS_ACCESS_KEY_ID_XVT}
-aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY_XVT}" > ~/.aws/credentials
+aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY_XVT}
+
+" > ~/.aws/credentials
 
 if [ "x${ROUTE53_AWS_ACCESS_KEY_ID}" != "x" ]; then
     printf "[xvt_aws_route53]
 aws_access_key_id = ${ROUTE53_AWS_ACCESS_KEY_ID}
-aws_secret_access_key = ${ROUTE53_AWS_SECRET_ACCESS_KEY}" >> ~/.aws/credentials
+aws_secret_access_key = ${ROUTE53_AWS_SECRET_ACCESS_KEY}
+
+" >> ~/.aws/credentials
 
 fi
 
