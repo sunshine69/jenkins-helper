@@ -104,7 +104,7 @@ EOF
 }
 
 def run_build_script(arg1=[:]) {
-    def default_arg = ['docker_net_opt': '--net=container:xvt', 'docker_volume_opt': '--volumes-from xvt_jenkins', 'docker_image': 'xvtsolutions/python3-aws-ansible:2.8.4', 'extra_build_scripts': [], 'run_as_user': [:] ]
+    def default_arg = ['docker_net_opt': '--net=container:xvt', 'docker_volume_opt': '--volumes-from xvt_jenkins', 'docker_image': 'xvtsolutions/python3-aws-ansible:2.8.5', 'extra_build_scripts': [], 'run_as_user': [:] ]
 
     def default_build_scripts = [
             'generate_add_user_script.sh',
