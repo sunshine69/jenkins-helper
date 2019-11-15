@@ -24,9 +24,9 @@ def generate_add_user_script() {
 }
 
 def harvest_log(nsre_url="https://10.100.9.223") {
-    stage('harvest_log') {//This only can run on master. Thus we have to create a downstream job to be autotrigger to save log into the master and process it.
+    stage('harvest_log') {//This only can run on master. Thus we have to create a downstream job to be autotrigger to save log into the master and process it. Currently this func is used for Deploy plan only to deal with ansible log. The generic log is done through the more generic build plan - see the below.
         withCredentials([string(credentialsId: 'NSRE_JWT_API_KEY', variable: 'NSRE_JWT_API_KEY')]) {
-        sh """nsre -m setup -c /tmp/nsre-\$\$.yaml -url ${nsre_url} -f ${BUILD_TAG}.log,buildlog.log -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
+        sh """nsre -m setup -c /tmp/nsre-\$\$.yaml -url ${nsre_url} -f ${BUILD_TAG}.log, -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
               nsre -m tail -c /tmp/nsre-\$\$.yaml
               rm -f /tmp/nsre-\$\$.yaml
         """
@@ -187,6 +187,20 @@ def apply_maintenance_policy_per_branch() {
         properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '1', daysToKeepStr: '', numToKeepStr: ''))])
     }
 
+   def MULTI_BRANCH = ""
+   def _l = "${JOB_NAME}".split("/")
+   if (_l.length > 1) {
+       MULTI_BRANCH = "yes"
+   } else {
+       MULTI_BRANCH = "no"
+   }
+
+   build job: 'RUN-log-harvest', parameters: [
+      string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+      string(name: 'UPSTREAM_JOB_NAME', value: "${JOB_NAME}"),
+      string(name: 'MULTI_BRANCH', value: MULTI_BRANCH),
+      ],
+      wait: false
 }
 
 def save_build_data(build_data=[:]) {
