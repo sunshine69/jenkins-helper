@@ -172,7 +172,9 @@ def remove_file(file_name) {
 
 def apply_maintenance_policy_per_branch() {
 
-    harvest_log("https://log.xvt.technology")
+    if (isUnix()) {//TODO apply for windows build later on
+        harvest_log("https://log.xvt.technology")
+    }
 
     echo "BRANCH_NAME: ${env.BRANCH_NAME}"
 
