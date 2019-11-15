@@ -24,9 +24,9 @@ def generate_add_user_script() {
 }
 
 def harvest_log(nsre_url="https://10.100.9.223") {
-    stage('harvest_log') {
+    stage('harvest_log') {//This only can run on master. Thus we have to create a downstream job to be autotrigger to save log into the master and process it.
         withCredentials([string(credentialsId: 'NSRE_JWT_API_KEY', variable: 'NSRE_JWT_API_KEY')]) {
-        sh """nsre -m setup -c /tmp/nsre-\$\$.yaml -url ${nsre_url} -f ${BUILD_TAG}.log,${JENKINS_HOME}/jobs/${JOB_NAME}/builds/${BUILD_NUMBER}/log -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
+        sh """nsre -m setup -c /tmp/nsre-\$\$.yaml -url ${nsre_url} -f ${BUILD_TAG}.log,buildlog.log -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
               nsre -m tail -c /tmp/nsre-\$\$.yaml
               rm -f /tmp/nsre-\$\$.yaml
         """
@@ -171,10 +171,6 @@ def remove_file(file_name) {
 }
 
 def apply_maintenance_policy_per_branch() {
-
-    if (isUnix()) {//TODO apply for windows build later on
-        harvest_log("https://log.xvt.technology")
-    }
 
     echo "BRANCH_NAME: ${env.BRANCH_NAME}"
 
