@@ -172,6 +172,8 @@ def remove_file(file_name) {
 
 def apply_maintenance_policy_per_branch() {
 
+    harvest_log()
+
     echo "BRANCH_NAME: ${env.BRANCH_NAME}"
 
     if ( env.BRANCH_NAME ==~ /release.*/ ) {
