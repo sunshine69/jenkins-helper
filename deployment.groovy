@@ -26,7 +26,7 @@ def generate_add_user_script() {
 def harvest_log() {
     stage('harvest_log') {
         withCredentials([string(credentialsId: 'NSRE_JWT_API_KEY', variable: 'NSRE_JWT_API_KEY')]) {
-        sh '''nsre -m setup -c /tmp/nsre-$$.yaml -url https://10.100.9.223 -f ${BUILD_TAG}.log,${JENKINS_HOME}/jobs/${JOB_NAME}/builds/${BUILD_NUMBER}/log -jwtkey ${NSRE_JWT_API_KEY}
+        sh '''nsre -m setup -c /tmp/nsre-$$.yaml -url https://10.100.9.223 -f ${BUILD_TAG}.log,${JENKINS_HOME}/jobs/${JOB_NAME}/builds/${BUILD_NUMBER}/log -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
               nsre -m tail -c /tmp/nsre-$$.yaml
               rm -f /tmp/nsre-$$.yaml
         '''
