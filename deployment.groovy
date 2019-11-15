@@ -23,6 +23,17 @@ def generate_add_user_script() {
     }//stage
 }
 
+def harvest_log() {
+    stage('harvest_log') {
+        withCredentials([string(credentialsId: 'NSRE_JWT_API_KEY', variable: 'NSRE_JWT_API_KEY')]) {
+        sh '''nsre -m setup -c /tmp/nsre-$$.yaml -url https://10.100.9.223 -f ${BUILD_TAG}.log,${JENKINS_HOME}/jobs/${JOB_NAME}/builds/${BUILD_NUMBER}/log -jwtkey ${NSRE_JWT_API_KEY}
+              nsre -m tail -c /tmp/nsre-$$.yaml
+              rm -f /tmp/nsre-$$.yaml
+        '''
+        }
+    }
+}
+
 def generate_aws_environment() {
     stage('generate_aws_environment') {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: "${PROFILE}", secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
