@@ -201,7 +201,7 @@ def apply_maintenance_policy_per_branch() {
 
     run_log_harvest_job()
 
-    if (("${BRANCH}" != "") && (("$ENV" != "" ) || ("${APP_ENV}" != "")) ) {
+    if ((env.BRANCH != "") && ((env.ENV != "" ) || (env.APP_ENV != "")) ) {
         echo "This is parameterised job. Skipping all properties settings"
     } else {
         echo "BRANCH_NAME: ${env.BRANCH_NAME}"
