@@ -31,12 +31,31 @@ def harvest_log(nsre_url="https://10.100.9.223") {
         //log. The generic log is done through the more generic build plan -
         //see the func apply_maintenance_policy_per_branch below.
         withCredentials([string(credentialsId: 'NSRE_JWT_API_KEY', variable: 'NSRE_JWT_API_KEY')]) {
-        sh """nsre -m setup -c /tmp/nsre-\$\$.yaml -url ${nsre_url} -f ${BUILD_TAG}.log, -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
+        sh """nsre -m setup -c /tmp/nsre-\$\$.yaml -url ${nsre_url} -f ${BUILD_TAG}.log -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
               nsre -m tail -c /tmp/nsre-\$\$.yaml
               rm -f /tmp/nsre-\$\$.yaml
         """
         }
     }
+}
+
+def run_log_harvest_job() {
+   stage('run_log_harvest_job') {
+   def MULTI_BRANCH = ""
+   def _l = "${JOB_NAME}".split("/")
+   if (_l.length > 1) {
+       MULTI_BRANCH = "yes"
+   } else {
+       MULTI_BRANCH = "no"
+   }
+
+   build job: 'RUN-log-harvest', parameters: [
+      string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+      string(name: 'UPSTREAM_JOB_NAME', value: "${JOB_NAME}"),
+      string(name: 'MULTI_BRANCH', value: MULTI_BRANCH),
+      ],
+      wait: false
+   }
 }
 
 def generate_aws_environment() {
@@ -175,38 +194,77 @@ def remove_file(file_name) {
     }
 }
 
+//DONT USE THIS FOR PARAMETERISED JOB - Due to jenkins bug, see work around below from https://issues.jenkins-ci.org/browse/JENKINS-43758 but it is too ugly for me to use.
+//The Multi branch build is fine as they dont have any parameters
+
 def apply_maintenance_policy_per_branch() {
 
-    echo "BRANCH_NAME: ${env.BRANCH_NAME}"
+    run_log_harvest_job()
 
-    if ( env.BRANCH_NAME ==~ /release.*/ ) {
-        echo "Process branch matches 'release'"
-        properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: ''))])
-    }
-    else if (env.BRANCH_NAME == "develop" || env.BRANCH_NAME == "master") {
-        echo "Process branch matches 'develop'"
-        properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '7', daysToKeepStr: '', numToKeepStr: ''))])
-    }
-    else {
-        echo "Process branch others than 'develop', 'release-XXX'"
-        properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '1', daysToKeepStr: '', numToKeepStr: ''))])
-    }
+    if (("${BRANCH}" != "") && (("$ENV" != "" ) || ("${APP_ENV}" != "")) ) {
+        echo "This is parameterised job. Skipping all properties settings"
+    } else {
+        echo "BRANCH_NAME: ${env.BRANCH_NAME}"
 
-   def MULTI_BRANCH = ""
-   def _l = "${JOB_NAME}".split("/")
-   if (_l.length > 1) {
-       MULTI_BRANCH = "yes"
-   } else {
-       MULTI_BRANCH = "no"
-   }
-
-   build job: 'RUN-log-harvest', parameters: [
-      string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
-      string(name: 'UPSTREAM_JOB_NAME', value: "${JOB_NAME}"),
-      string(name: 'MULTI_BRANCH', value: MULTI_BRANCH),
-      ],
-      wait: false
+        if ( env.BRANCH_NAME ==~ /release.*/ ) {
+            echo "Process branch matches 'release'"
+            properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: ''))])
+        }
+        else if (env.BRANCH_NAME == "develop" || env.BRANCH_NAME == "master") {
+            echo "Process branch matches 'develop'"
+            properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '7', daysToKeepStr: '', numToKeepStr: ''))])
+        }
+        else {
+            echo "Process branch others than 'develop', 'release-XXX'"
+            properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '1', daysToKeepStr: '', numToKeepStr: ''))])
+        }
+    }
 }
+
+/**
+ * This exists primarily because of a bug in Jenkins pipeline that causes
+ * any call to the "properties" closure to overwrite all job property settings,
+ * not just the ones being set.  Therefore, we set all properties that
+ * the generator may have set when it generated this job (or a human).
+ *
+ * @param settingsOverrides a map, see defaults below.
+ * @return
+ */
+def setJobProperties(Map settingsOverrides = [:]) {
+    def settings = [discarder_builds_to_keep:'10', discarder_days_to_keep: '', cron: null, paramsList: [], upstreamTriggers: null, disableConcurrentBuilds: false] + settingsOverrides
+
+//    echo "Setting job properties.  discarder is '${settings.discarder_builds_to_keep}' and cron is '${settings.cron}' (${settings.cron?.getClass()})"
+    def jobProperties = [
+            //these have to be strings:
+            buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: "${settings.discarder_days_to_keep}", numToKeepStr: "${settings.discarder_builds_to_keep}"))
+    ]
+
+    if (settings.cron) {
+        jobProperties << pipelineTriggers([cron(settings.cron)])
+    }
+
+    if (settings.upstreamTriggers) {
+        jobProperties << pipelineTriggers([upstream(settings.upstreamTriggers)])
+    }
+
+    if (settings.disableConcurrentBuilds) {
+        jobProperties << disableConcurrentBuilds()
+    }
+
+    if (settings.paramsList?.size() > 0) {
+        def generatedParams = []
+        settings.paramsList.each { //params are specified as name:default:description
+            def parts = it.split(':', 3).toList() //I need to honor all delimiters but I want a list
+            generatedParams << string(name: "${parts[0]}", defaultValue: "${parts[1] ?: ''}", description: "${parts[2] ?: ''}", trim: true)
+        }
+        jobProperties << parameters(generatedParams)
+    }
+
+    echo "Setting job properties: ${jobProperties}"
+
+    properties(jobProperties)
+}
+
 
 def save_build_data(build_data=[:]) {
     stage('save_build_data') {
