@@ -347,10 +347,62 @@ def is_sub_map(m0, m1, regex_match=[:]) {
     return output
 }
 
+def get_build_properties(job_name, param_filter=[:], regex_match=[:]) {
+//Get the param of the last success build of a job_name matching the
+//param_filter map.
+//The regex_match is a dict of 'field_name': true|false where filed_name is in
+//the param_filter to state that we should apply regex match on it or not
+//It actually like wildcard match - will be appended and prepended with .* to the string
+    stage('get_build_param_by_name') {
+        script {
+            def output = [:]
+            def selected_build = null
+
+            Jenkins.instance.getAllItems(Job).findAll() {job -> job.name == job_name}.each{
+                def selected_param_kv = [:]
+                def jobBuilds = it.getBuilds()
+                for (i=0; i < jobBuilds.size(); i++) {
+                    def current_job = jobBuilds[i]
+
+                    if (! current_job.getResult().toString().equals("SUCCESS")) continue
+
+                    def current_parameters = current_job.getAction(ParametersAction)?.parameters
+
+                    def current_param_kv = [:]
+                    current_parameters.each { param ->
+                        current_param_kv[param.name] = param.value
+                    }
+
+                    def job_description_lines = current_job.getDescription().split('<br/>')
+                    def job_description_map = [:]
+                    job_description_lines.each { line ->
+                    def _kvlist = line.split(/\:[\s]+/)
+                    if (_kvlist.size() == 2) {
+                        job_description_map[_kvlist[0].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'') ] = _kvlist[1].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'')
+                        }
+                    }
+	                output = current_param_kv + job_description_map
+                    output.each { k, v ->
+                        output[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
+                    }
+
+                    if (is_sub_map(param_filter, output, regex_match)) {
+                        println("DEBUG: ${output}")
+                        break
+                    }
+                }
+            }// each job
+            return output
+        }//script
+    }//stage
+}
 
 def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
 //Get the param of the last success build of a job_name matching the
 //param_filter map.
+//The regex_match is a dict of 'field_name': true|false where filed_name is in
+//the param_filter to state that we should apply regex match on it or not
+//It actually like wildcard match - will be appended and prepended with .* to the string
     stage('get_build_param_by_name') {
         script {
             def output = [:]
