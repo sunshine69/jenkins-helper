@@ -139,7 +139,15 @@ EOF
 }
 
 def run_build_script(arg1=[:]) {
-    def default_arg = ['docker_net_opt': '--net=container:xvt', 'docker_volume_opt': '--volumes-from xvt_jenkins', 'docker_image': 'xvtsolutions/python3-aws-ansible:2.9.1', 'extra_build_scripts': [], 'run_as_user': [:] ]
+    def default_arg = [
+        'docker_net_opt': '--net=container:xvt',
+        'docker_volume_opt': '--volumes-from xvt_jenkins',
+        'docker_entrypoint_opt': '--entrypoint sleep',
+        'docker_args_opt': '7200',
+        'docker_image': 'xvtsolutions/python3-aws-ansible:2.9.1',
+        'extra_build_scripts': [],
+        'run_as_user': [:]
+        ]
 
     def default_build_scripts = [
             'generate_add_user_script.sh',
@@ -167,7 +175,7 @@ def run_build_script(arg1=[:]) {
                 DOCKER_WORKSPACE = "${WORKSPACE}"
             }
 
-            docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt}") { c->
+            docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt} ${arg.docker_entrypoint_opt}", "${arg.docker_args_opt}") { c->
                 build_scripts.each { script_name ->
                     if (fileExists(script_name)) {
                         def _run_as_user = run_as_user[script_name]?:run_as_user.default_user
