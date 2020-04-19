@@ -152,7 +152,8 @@ def run_build_script(arg1=[:]) {
         'docker_extra_opt': '',
         'docker_image': 'xvtsolutions/python3-aws-ansible:2.9.1',
         'extra_build_scripts': [],
-        'run_as_user': [:]
+        'run_as_user': [:],
+        'outside_scripts': [:]
         ]
 
     def default_build_scripts = [
@@ -192,6 +193,9 @@ def run_build_script(arg1=[:]) {
                         echo "${script_name} does not exist - skipping"
                     }
                 }//each
+                arg.outside_scripts.each { script_name ->
+                    sh "./${script_name}"
+                }
             }//docker env
         }//script
     }//stage
