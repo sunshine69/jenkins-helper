@@ -6,14 +6,15 @@ def generate_add_user_script() {
               my_GID=$(id -g)
               my_NAME=$(whoami)
               cat <<EOF > generate_add_user_script.sh
+
               #!/bin/sh
               if [ -f "/etc/alpine-release" ]; then
-                if ! `grep $my_NAME /etc/passwd >/dev/null 2>&1`; then
+                if ! \\`grep $my_NAME /etc/passwd >/dev/null 2>&1\\`; then
               	  addgroup -g $my_GID $my_NAME
               	  adduser -u $my_UID -g $my_GID -D -S $my_NAME
                 fi
               else
-              	if ! `grep $my_NAME /etc/passwd >/dev/null 2>&1`; then
+              	if ! \\`grep $my_NAME /etc/passwd >/dev/null 2>&1\\`; then
                   groupadd -g $my_GID $my_NAME
               	  useradd -u $my_UID -g $my_GID $my_NAME
                 fi
