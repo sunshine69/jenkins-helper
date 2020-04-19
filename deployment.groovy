@@ -83,7 +83,7 @@ def generate_aws_environment() {
                     env.VAULT = ''
                 }
             sh '''cat <<EOF > generate_aws_environment.sh
-#!/bin/bash -e
+#!/bin/sh -e
 mkdir -p ~/.aws
 
 printf "[$PROFILE]
@@ -179,7 +179,7 @@ def run_build_script(arg1=[:]) {
                 build_scripts.each { script_name ->
                     if (fileExists(script_name)) {
                         def _run_as_user = run_as_user[script_name]?:run_as_user.default_user
-                        sh "docker exec --user ${_run_as_user} --workdir ${DOCKER_WORKSPACE} ${c.id} bash ./${script_name}"
+                        sh "docker exec --user ${_run_as_user} --workdir ${DOCKER_WORKSPACE} ${c.id} sh ./${script_name}"
                         sh "rm -f ${script_name}"
                     }
                     else {
