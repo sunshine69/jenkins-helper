@@ -8,15 +8,19 @@ def generate_add_user_script() {
               cat <<EOF > generate_add_user_script.sh
               #!/bin/sh
               if [ -f "/etc/alpine-release" ]; then
-              	addgroup -g $my_GID $my_NAME
-              	adduser -u $my_UID -g $my_GID -D -S $my_NAME
+                if ! `grep $my_NAME /etc/passwd >/dev/null 2>&1`; then
+              	  addgroup -g $my_GID $my_NAME
+              	  adduser -u $my_UID -g $my_GID -D -S $my_NAME
+                fi
               else
-              	groupadd -g $my_GID $my_NAME
-              	useradd -u $my_UID -g $my_GID $my_NAME
+              	if ! `grep $my_NAME /etc/passwd >/dev/null 2>&1`; then
+                  groupadd -g $my_GID $my_NAME
+              	  useradd -u $my_UID -g $my_GID $my_NAME
+                fi
               fi
 
-              mkdir -p /home/$my_NAME >/dev/null 2>&1
-              chown -R $my_NAME:$my_GID /home/$my_NAME
+              mkdir -p /home/$my_NAME >/dev/null 2>&1 || true
+              chown -R $my_NAME:$my_GID /home/$my_NAME || true
           '''
           sh 'chmod +x generate_add_user_script.sh'
         }//script
