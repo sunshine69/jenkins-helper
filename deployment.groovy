@@ -20,8 +20,10 @@ def generate_add_user_script() {
                 fi
               fi
 
-              mkdir -p /home/$my_NAME >/dev/null 2>&1 || true
-              chown -R $my_NAME:$my_GID /home/$my_NAME || true
+              if [ ! -d /home/$my_NAME ]; then
+                mkdir -p /home/$my_NAME >/dev/null 2>&1 || true
+                chown -R $my_NAME:$my_GID /home/$my_NAME || true
+              fi
           '''
           sh 'chmod +x generate_add_user_script.sh'
         }//script
