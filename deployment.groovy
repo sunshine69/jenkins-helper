@@ -152,7 +152,7 @@ def run_build_script(arg1=[:]) {
         'docker_entrypoint_opt': '--entrypoint sleep',
         'docker_args_opt': '7200',
         'docker_extra_opt': '',
-        'docker_image': 'xvtsolutions/python3-aws-ansible:2.9.1',
+        'docker_image': 'stevekieu/python3-cloud-ansible:2.9.9',
         'extra_build_scripts': [],
         'run_as_user': [:],
         'outside_scripts': [:]
