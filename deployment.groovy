@@ -180,7 +180,9 @@ def run_build_script(arg1=[:]) {
                 DOCKER_WORKSPACE = arg.docker_volume_opt.replaceAll(/-v[\s]+/,'').split(':')[1]
             }
             catch (Exception ex) {
-                echo "${ex}"
+                if (env.DEBUG == "yes") {
+                    echo "${ex}"
+                }
                 DOCKER_WORKSPACE = "${WORKSPACE}"
             }
 
