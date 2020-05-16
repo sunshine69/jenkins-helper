@@ -147,8 +147,8 @@ EOF
 
 def run_build_script(arg1=[:]) {
     def default_arg = [
-        'docker_net_opt': '--net=container:xvt',
-        'docker_volume_opt': '--volumes-from xvt_jenkins',
+        'docker_net_opt': '',
+        'docker_volume_opt': '',
         'docker_entrypoint_opt': '--entrypoint sleep',
         'docker_args_opt': '7200',
         'docker_extra_opt': '',
