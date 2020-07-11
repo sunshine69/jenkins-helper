@@ -392,3 +392,4 @@ def load_upstream_build_data() {
         }//script
     }//stage
 }
+return this
