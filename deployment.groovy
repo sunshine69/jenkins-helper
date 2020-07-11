@@ -1,69 +1,109 @@
-def generate_add_user_script() {
+//The jenkins sshagent plugin does not work well inside a docker container.
+//This implementation would rely only on shell and standard ssh tool to support
+//it thus it would be much more stable and easy to debug rather than depending
+//on jenkins plugin which is not working for inside container at the moment.
+
+//To use it at the run_build_scripts function pass the argument 'ssh_key_id'
+//which is the string of the jenkins ssh private key crdential store. This will
+//activate this function and setup agent automatically.
+
+def generate_prepare_ssh_agent_script() {
+    stage('generate_prepare_ssh_agent_script') {
+        script {
+            sh '''cat <<EOF > ssh_agent_ask_pass.sh
+#!/bin/sh
+# Parameter \\$1 passed to the script is the prompt text
+# READ Secret from STDIN and echo it
+read SECRET
+echo \\$SECRET
+EOF
+'''
+            sh 'chmod 0755 ssh_agent_ask_pass.sh'
+            sh '''cat <<EOF > run_ssh_agent.sh
+#!/bin/bash
+
+# If detect SSH_KEY_FILE and SSH_PASS_PHRASE then start the ssh-agent
+# All next scripts can source the file .ssh-agent to access the agent
+
+if [ "\\$SSH_KEY_FILE" != "" ]; then
+    ssh-agent > .ssh-agent
+    . ./.ssh-agent
+    if [ "\\$SSH_PASS_PHRASE" != "" ]; then
+        SSH_ASKPASS=./ssh_agent_ask_pass.sh ssh-add \\$SSH_KEY_FILE <<< "\\$SSH_PASS_PHRASE"
+    else
+        ssh-add \\$SSH_KEY_FILE
+    fi
+    cp .ssh-agent .ssh-agent.groovy
+    sed -i 's/; export .*\\$//; s/echo .*\\$//; s/^SSH_/env.SSH_/; s/=/ = "/; s/\\$/"/; s/^"\\$//  ' .ssh-agent.groovy
+fi
+EOF
+'''
+            sh 'chmod +x run_ssh_agent.sh'
+        }//script
+    }//stage
+}//end func
+
+def generate_add_user_script(username='') {
     stage('generate_add_user_script') {
         script {
-          sh '''#!/bin/sh
-              my_UID=$(id -u)
-              my_GID=$(id -g)
-              my_NAME=$(whoami)
-              cat <<EOF > generate_add_user_script.sh
+          env.my_UID = sh(returnStdout: true, script: "id -u").trim()
+          env.my_GID = sh(returnStdout: true, script: "id -g").trim()
+          env.DOCKER_GID = sh(returnStdout: true, script: "grep docker /etc/group | cut -f3 -d':'").trim()
+          if (username != "") {
+            env.my_NAME = username
+            env.UPDATE_EXISTING_USER = "yes"
+          } else {
+            env.my_NAME = sh(returnStdout: true, script: "whoami").trim()
+          }
+          sh '''cat <<EOF > generate_add_user_script.sh
+#!/bin/sh
+if [ -f "/etc/alpine-release" ]; then
+  if ! \\`grep $my_NAME /etc/passwd >/dev/null 2>&1\\`; then
+	  addgroup -g $my_GID $my_NAME
+	  adduser -u $my_UID -g $my_GID -D -S $my_NAME
+  else
+      if [ "${UPDATE_EXISTING_USER}" = "yes" ]; then
+          groupmod -g $my_GID $my_NAME
+          usermod -u $my_UID -g $my_GID $my_NAME
+      fi
+  fi
+else
+  if ! \\`grep $my_NAME /etc/passwd >/dev/null 2>&1\\`; then
+    groupadd -g $my_GID $my_NAME
+	useradd -u $my_UID -g $my_GID $my_NAME
+  else
+      if [ "${UPDATE_EXISTING_USER}" = "yes" ]; then
+          groupmod -g $my_GID $my_NAME
+          usermod -u $my_UID -g $my_GID $my_NAME
+      fi
+  fi
+fi
 
-              #!/bin/sh
-              if [ -f "/etc/alpine-release" ]; then
-                if ! \\`grep $my_NAME /etc/passwd >/dev/null 2>&1\\`; then
-              	  addgroup -g $my_GID $my_NAME
-              	  adduser -u $my_UID -g $my_GID -D -S $my_NAME
-                fi
-              else
-              	if ! \\`grep $my_NAME /etc/passwd >/dev/null 2>&1\\`; then
-                  groupadd -g $my_GID $my_NAME
-              	  useradd -u $my_UID -g $my_GID $my_NAME
-                fi
-              fi
+if [ ! -d /home/$my_NAME ]; then
+  mkdir -p /home/$my_NAME >/dev/null 2>&1 || true
+  chown -R $my_NAME:$my_GID /home/$my_NAME || true
+else
+  if [ "${UPDATE_EXISTING_USER}" = "yes" ]; then
+    chown -R $my_NAME:$my_GID /home/$my_NAME || true
+  fi
+fi
 
-              if [ ! -d /home/$my_NAME ]; then
-                mkdir -p /home/$my_NAME >/dev/null 2>&1 || true
-                chown -R $my_NAME:$my_GID /home/$my_NAME || true
-              fi
-          '''
+if [ "$DOCKER_GID" != "" ]; then
+  if ! \\`grep docker /etc/group >/dev/null 2>&1\\`; then
+      groupadd -g $DOCKER_GID docker
+  else
+      echo "WARNING - docker group exists in /etc/group file inside the container."
+      sed -i "s/docker:x:[\\d]+/docker:x:$DOCKER_GID/" /etc/group
+  fi
+  usermod -a -G $DOCKER_GID $my_NAME
+fi
+EOF
+'''
           sh 'chmod +x generate_add_user_script.sh'
-        }//script
+       }//script
     }//stage
 }
 
-def harvest_log(nsre_url="https://10.100.9.223") {
-    stage('harvest_log') {
-        //This only can run on master. Thus we have to create a downstream job
-        //to be autotrigger to save log into the master and process it.
-        //Currently this func is used for Deploy plan only to deal with ansible
-        //log. The generic log is done through the more generic build plan -
-        //see the func apply_maintenance_policy_per_branch below.
-        withCredentials([string(credentialsId: 'NSRE_JWT_API_KEY', variable: 'NSRE_JWT_API_KEY')]) {
-        sh """nsre -m setup -c /tmp/nsre-\$\$.yaml -url ${nsre_url} -f ${BUILD_TAG}.log -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
-              nsre -m tail -c /tmp/nsre-\$\$.yaml
-              rm -f /tmp/nsre-\$\$.yaml
-        """
-        }
-    }
-}
-
-def run_log_harvest_job() {
-   stage('run_log_harvest_job') {
-   def MULTI_BRANCH = ""
-   def _l = "${JOB_NAME}".split("/")
-   if (_l.length > 1) {
-       MULTI_BRANCH = "yes"
-   } else {
-       MULTI_BRANCH = "no"
-   }
-
-   build job: 'RUN-log-harvest', parameters: [
-      string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
-      string(name: 'UPSTREAM_JOB_NAME', value: "${JOB_NAME}"),
-      string(name: 'MULTI_BRANCH', value: MULTI_BRANCH),
-      ],
-      wait: false
-   }
-}
 
 def generate_aws_environment() {
     stage('generate_aws_environment') {
@@ -148,14 +188,23 @@ EOF
 def run_build_script(arg1=[:]) {
     def default_arg = [
         'docker_net_opt': '',
+        'docker_default_volume_opt': "--mount src=jenkins_home,target=$JENKINS_HOME",
         'docker_volume_opt': '',
-        'docker_entrypoint_opt': '--entrypoint sleep',
-        'docker_args_opt': '7200',
+        'docker_entrypoint_opt': '',
+        'docker_args_opt': '',
         'docker_extra_opt': '',
         'docker_image': 'stevekieu/python3-cloud-ansible:2.9.9',
+//This is will be appended to the list of script to run
         'extra_build_scripts': [],
+//a map 'script_name': 'user_name' to instruct that script is run as the user.
+//Default for add_user_scripts is root, and all other is normal user generated
+//by the add_user_scripts
         'run_as_user': [:],
-        'outside_scripts': [:]
+//This script will run not within docker container. Used to cleanup something if needed
+        'outside_scripts': [:],
+        'ssh_key_id': '',
+        'ssh_key_file': '',
+        'update_existing_user': '',
         ]
 
     def default_build_scripts = [
@@ -173,34 +222,57 @@ def run_build_script(arg1=[:]) {
     // run build.sh at last
     build_scripts.add('build.sh')
 
+    arg.docker_volume_opt = arg.docker_volume_opt + " " + arg.docker_default_volume_opt
+
     stage('run_build_script') {
         script {
-            def DOCKER_WORKSPACE = null
-            try {
-                DOCKER_WORKSPACE = arg.docker_volume_opt.replaceAll(/-v[\s]+/,'').split(':')[1]
-            }
-            catch (Exception ex) {
-                if (env.DEBUG == "yes") {
-                    echo "${ex}"
-                }
-                DOCKER_WORKSPACE = "${WORKSPACE}"
+            DOCKER_WORKSPACE = "${WORKSPACE}"
+            //Generate add_user_scripts by default
+            if (! fileExists("generate_add_user_script.sh")) {
+                generate_add_user_script(arg.update_existing_user)
             }
 
-            docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt} ${arg.docker_entrypoint_opt} ${arg.docker_extra_opt}", "${arg.docker_args_opt}") { c->
-                build_scripts.each { script_name ->
+            def run_build_scripts = { bsi, bso, docker_instance ->
+                bsi.each { script_name ->
                     if (fileExists(script_name)) {
                         def _run_as_user = run_as_user[script_name]?:run_as_user.default_user
-                        sh "docker exec --user ${_run_as_user} --workdir ${DOCKER_WORKSPACE} ${c.id} sh ./${script_name}"
+                        if (fileExists('.ssh-agent.groovy')) {
+                            load '.ssh-agent.groovy'
+                            sh "docker exec --user ${_run_as_user} -e SSH_AUTH_SOCK=$SSH_AUTH_SOCK -e SSH_AGENT_PID=$SSH_AGENT_PID  --workdir ${DOCKER_WORKSPACE} ${docker_instance.id} ./${script_name}"
+                        }
+                        else {
+                            sh "docker exec --user ${_run_as_user} --workdir ${DOCKER_WORKSPACE} ${docker_instance.id} ./${script_name}"
+                        }
                         sh "rm -f ${script_name}"
                     }
-                    else {
-                        echo "${script_name} does not exist - skipping"
-                    }
-                }//each
-                arg.outside_scripts.each { script_name ->
+                    //else {
+                    //    echo "${script_name} does not exist - skipping"
+                    //}
+                }//each inside
+                bso.each { script_name ->
                     sh "./${script_name}"
-                }
-            }//docker env
+                }//each outside
+            }//end closure
+            if (arg.ssh_key_id != '') {
+                generate_prepare_ssh_agent_script()
+                build_scripts = build_scripts.plus(1, 'run_ssh_agent.sh')
+                withCredentials([sshUserPrivateKey(credentialsId: arg.ssh_key_id, keyFileVariable: 'SSH_KEY_FILE', passphraseVariable: 'SSH_PASS_PHRASE', usernameVariable: 'SSH_USER')]) {
+                    docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt} ${arg.docker_entrypoint_opt} ${arg.docker_extra_opt} -e SSH_KEY_FILE=$SSH_KEY_FILE -e SSH_PASS_PHRASE='${env.SSH_PASS_PHRASE}' -e SSH_USER=$SSH_USER -e ANSIBLE_USER=$SSH_USER", "${arg.docker_args_opt}") { c->
+                    run_build_scripts(build_scripts, arg.outside_scripts, c)
+                    }//docker env
+                }//ssh-key-id
+            } else if (arg.ssh_key_file != '') {
+                generate_prepare_ssh_agent_script()
+                build_scripts = build_scripts.plus(1, 'run_ssh_agent.sh')
+                docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt} ${arg.docker_entrypoint_opt} ${arg.docker_extra_opt} -e SSH_KEY_FILE=$SSH_KEY_FILE -e SSH_PASS_PHRASE='${env.SSH_PASS_PHRASE}' -e SSH_USER=$SSH_USER -e ANSIBLE_USER=$SSH_USER", "${arg.docker_args_opt}") { c->
+                    run_build_scripts(build_scripts, arg.outside_scripts, c)
+                    }//docker env
+            }
+            else {
+                docker.image(arg.docker_image).withRun("-u root ${arg.docker_volume_opt} ${arg.docker_net_opt} ${arg.docker_entrypoint_opt} ${arg.docker_extra_opt}", "${arg.docker_args_opt}") { c->
+                    run_build_scripts(build_scripts, arg.outside_scripts, c)
+                }//docker env
+            }
         }//script
     }//stage
 }
@@ -220,8 +292,6 @@ def remove_file(file_name) {
 //The Multi branch build is fine as they dont have any parameters
 
 def apply_maintenance_policy_per_branch() {
-
-    run_log_harvest_job()
 
     if ((env.BRANCH != "") && ((env.ENV != "" ) || (env.APP_ENV != "")) ) {
         echo "This is parameterised job. Skipping all properties settings"
@@ -243,63 +313,32 @@ def apply_maintenance_policy_per_branch() {
     }
 }
 
-/**
- * This exists primarily because of a bug in Jenkins pipeline that causes
- * any call to the "properties" closure to overwrite all job property settings,
- * not just the ones being set.  Therefore, we set all properties that
- * the generator may have set when it generated this job (or a human).
- *
- * @param settingsOverrides a map, see defaults below.
- * @return
- */
-def setJobProperties(Map settingsOverrides = [:]) {
-    def settings = [discarder_builds_to_keep:'10', discarder_days_to_keep: '', cron: null, paramsList: [], upstreamTriggers: null, disableConcurrentBuilds: false] + settingsOverrides
-
-//    echo "Setting job properties.  discarder is '${settings.discarder_builds_to_keep}' and cron is '${settings.cron}' (${settings.cron?.getClass()})"
-    def jobProperties = [
-            //these have to be strings:
-            buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: "${settings.discarder_days_to_keep}", numToKeepStr: "${settings.discarder_builds_to_keep}"))
-    ]
-
-    if (settings.cron) {
-        jobProperties << pipelineTriggers([cron(settings.cron)])
-    }
-
-    if (settings.upstreamTriggers) {
-        jobProperties << pipelineTriggers([upstream(settings.upstreamTriggers)])
-    }
-
-    if (settings.disableConcurrentBuilds) {
-        jobProperties << disableConcurrentBuilds()
-    }
-
-    if (settings.paramsList?.size() > 0) {
-        def generatedParams = []
-        settings.paramsList.each { //params are specified as name:default:description
-            def parts = it.split(':', 3).toList() //I need to honor all delimiters but I want a list
-            generatedParams << string(name: "${parts[0]}", defaultValue: "${parts[1] ?: ''}", description: "${parts[2] ?: ''}", trim: true)
-        }
-        jobProperties << parameters(generatedParams)
-    }
-
-    echo "Setting job properties: ${jobProperties}"
-
-    properties(jobProperties)
-}
-
-
 def save_build_data(build_data=[:]) {
     stage('save_build_data') {
         script {
             def default_data = [
                 build_number: "${BUILD_NUMBER}",
-                branch_name: "${BRANCH_NAME}",
-                git_revision: "${GIT_REVISION}",
                 upstream_build_url: "${BUILD_URL}",
                 upstream_job_name: "${JOB_NAME}",
                 upstream_job_base_name: "${JOB_BASE_NAME}",
-                artifact_version: "${BUILD_VERSION}"
                 ]
+
+            if ( env.BRANCH_NAME ) {
+                default_data = default_data + [ branch_name: "${BRANCH_NAME}"  ]
+            }
+
+            if ( ! env.GIT_REVISION ) {
+               env.GIT_REVISION = sh(returnStdout: true, script: """
+                    git rev-parse --short HEAD || echo 'No git revision found'"""
+                ).trim()
+            }
+
+            default_data = default_data + [ git_revision: "${GIT_REVISION}" ]
+
+            if ( env.BUILD_VERSION ) {
+                default_data = default_data + [ artifact_version: "${BUILD_VERSION}" ]
+            }
+
             def data = default_data + build_data
             remove_file('artifact_data.yml')
             writeYaml file: 'artifact_data.yml', data: data
@@ -309,32 +348,43 @@ def save_build_data(build_data=[:]) {
 }
 
 def load_upstream_build_data() {
+    // Take the env.UPSTREAM_BUILD_NUMBER (default to lasst success build), env.UPSTREAM_JOB_NAME it will load
+    // the previously saved build data and load into the environment so other
+    // steps can use it. Only a predefined set of vars exported by default. However ...
+    // It also set the global ARTIFACT_DATA object which contains the whole parsed yaml file
+
+    //Requires plugin `Copy Artifact Plugin`
+
     stage('load_upstream_build_data') {
         script {
+            if ( ! env.UPSTREAM_BUILD_NUMBER ) {
+                env.UPSTREAM_BUILD_NUMBER = 'LAST_SUCCESS_BUILD'
+            }
             try {
-            if (env.UPSTREAM_BUILD_NUMBER == 'LAST_SAVED_BUILD') {
-              copyArtifacts filter: 'artifact_data.yml', fingerprintArtifacts: true, flatten: true, projectName: "${UPSTREAM_JOB_NAME}", selector: latestSavedBuild()
-            }
-            else if (env.UPSTREAM_BUILD_NUMBER == 'LAST_SUCCESS_BUILD')  {
-                copyArtifacts filter: 'artifact_data.yml', fingerprintArtifacts: true, flatten: true, projectName: "${UPSTREAM_JOB_NAME}", selector: lastSuccessful()
-            }
-            else {
-              copyArtifacts filter: 'artifact_data.yml', fingerprintArtifacts: true, flatten: true, projectName: "${UPSTREAM_JOB_NAME}", selector: specific("${UPSTREAM_BUILD_NUMBER}")
-            }//If
-            // Parsing artifact data
-            ARTIFACT_DATA = readYaml(file: 'artifact_data.yml')
-            ARTIFACT_DATA.each { k, v ->
-                ARTIFACT_DATA[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
-            }
-            env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename ?: (env.ARTIFACT_FILENAME ?: null)
-            env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision ?: (env.UPSTREAM_REVISION ?: null)
-            env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision ?: (ARTIFACT_DATA.git_revision ?: (env.ARTIFACT_REVISION ?: null))
-            env.ARTIFACT_VERSION = ARTIFACT_DATA.artifact_version ?: (env.ARTIFACT_VERSION ?: null)
-            env.UPSTREAM_BUILD_NUMBER = ARTIFACT_DATA.build_number ?: (env.UPSTREAM_BUILD_NUMBER ?: null)
-            env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: (env.UPSTREAM_BRANCH_NAME ?: null)
-            env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: (env.UPSTREAM_BUILD_URL ?: null)
-            env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: (env.UPSTREAM_JOB_NAME ?: null)
-            env.ARTIFACT_CLASS = ARTIFACT_DATA.artifact_class ?: (env.ARTIFACT_CLASS ?: null)
+                if (env.UPSTREAM_BUILD_NUMBER == 'LAST_SAVED_BUILD') {
+                  copyArtifacts filter: 'artifact_data.yml', fingerprintArtifacts: true, flatten: true, projectName: "${UPSTREAM_JOB_NAME}", selector: latestSavedBuild()
+                }
+                else if (env.UPSTREAM_BUILD_NUMBER == 'LAST_SUCCESS_BUILD')  {
+                    copyArtifacts filter: 'artifact_data.yml', fingerprintArtifacts: true, flatten: true, projectName: "${UPSTREAM_JOB_NAME}", selector: lastSuccessful()
+                }
+                else {
+                  copyArtifacts filter: 'artifact_data.yml', fingerprintArtifacts: true, flatten: true, projectName: "${UPSTREAM_JOB_NAME}", selector: specific("${UPSTREAM_BUILD_NUMBER}")
+                }//If
+                // Parsing artifact data
+                def ARTIFACT_DATA = readYaml(file: 'artifact_data.yml')
+                ARTIFACT_DATA.each { k, v ->
+                    ARTIFACT_DATA[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
+                }
+                env.ARTIFACT_FILENAME = ARTIFACT_DATA.artifact_filename ?: (env.ARTIFACT_FILENAME ?: null)
+                env.UPSTREAM_REVISION = ARTIFACT_DATA.git_revision ?: (env.UPSTREAM_REVISION ?: null)
+                env.ARTIFACT_REVISION = ARTIFACT_DATA.artifact_revision ?: (ARTIFACT_DATA.git_revision ?: (env.ARTIFACT_REVISION ?: null))
+                env.ARTIFACT_VERSION = ARTIFACT_DATA.artifact_version ?: (env.ARTIFACT_VERSION ?: null)
+                env.UPSTREAM_BUILD_NUMBER = ARTIFACT_DATA.build_number ?: (env.UPSTREAM_BUILD_NUMBER ?: null)
+                env.UPSTREAM_BRANCH_NAME = ARTIFACT_DATA.branch_name ?: (env.UPSTREAM_BRANCH_NAME ?: null)
+                env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: (env.UPSTREAM_BUILD_URL ?: null)
+                env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: (env.UPSTREAM_JOB_NAME ?: null)
+                env.ARTIFACT_CLASS = ARTIFACT_DATA.artifact_class ?: (env.ARTIFACT_CLASS ?: null)
+                env.ARTIFACT_DATA = ARTIFACT_DATA
 
             } catch (Exception e) {
                 echo "Unable to load_upstream_build_data - ${e}"
@@ -342,131 +392,3 @@ def load_upstream_build_data() {
         }//script
     }//stage
 }
-
-
-def is_sub_map(m0, m1, regex_match=[:]) {
-//Test if a map m0 a sub map of m1. sub map is defined that for all keys in m0
-//m1 must have that key and m1 must have the value that is equal of m0 pair.
-//The value can be match using regex per key - by default is exact match.
-    def filter_keys = m0.keySet()
-    def output = true
-    for (filter_key in filter_keys) {
-        if (! regex_match[filter_key]) {
-            if (! (m1.containsKey(filter_key) && m1[filter_key] == m0[filter_key]) ) {
-                output = false
-                break
-            }
-        }
-        else {
-            def m0_val = m0[filter_key]
-            def m1_val = m1[filter_key]
-            if (! (m1.containsKey(filter_key) && m1_val.matches(".*${m0_val}.*")))  {
-                output = false
-                break
-            }
-        }
-    }
-    return output
-}
-
-def get_build_properties(job_name, param_filter=[:], regex_match=[:]) {
-//Get the param of the last success build of a job_name matching the
-//param_filter map.
-//The regex_match is a dict of 'field_name': true|false where filed_name is in
-//the param_filter to state that we should apply regex match on it or not
-//It actually like wildcard match - will be appended and prepended with .* to the string
-    stage('get_build_param_by_name') {
-        script {
-            def output = [:]
-            def selected_build = null
-
-            Jenkins.instance.getAllItems(Job).findAll() {job -> job.name == job_name}.each{
-                def selected_param_kv = [:]
-                def jobBuilds = it.getBuilds()
-                for (i=0; i < jobBuilds.size(); i++) {
-                    def current_job = jobBuilds[i]
-
-                    if (! current_job.getResult().toString().equals("SUCCESS")) continue
-
-                    def current_parameters = current_job.getAction(ParametersAction)?.parameters
-
-                    def current_param_kv = [:]
-                    current_parameters.each { param ->
-                        current_param_kv[param.name] = param.value
-                    }
-
-                    def job_description_lines = current_job.getDescription().split('<br/>')
-                    def job_description_map = [:]
-                    job_description_lines.each { line ->
-                    def _kvlist = line.split(/\:[\s]+/)
-                    if (_kvlist.size() == 2) {
-                        job_description_map[_kvlist[0].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'') ] = _kvlist[1].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'')
-                        }
-                    }
-	                output = current_param_kv + job_description_map
-                    output.each { k, v ->
-                        output[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
-                    }
-
-                    if (is_sub_map(param_filter, output, regex_match)) {
-                        println("DEBUG: ${output}")
-                        break
-                    }
-                }
-            }// each job
-            return output
-        }//script
-    }//stage
-}
-
-def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
-//Get the param of the last success build of a job_name matching the
-//param_filter map.
-//The regex_match is a dict of 'field_name': true|false where filed_name is in
-//the param_filter to state that we should apply regex match on it or not
-//It actually like wildcard match - will be appended and prepended with .* to the string
-    stage('get_build_param_by_name') {
-        script {
-            def output = [:]
-            def selected_build = null
-
-            Jenkins.instance.getAllItems(Job).findAll() {job -> job.name == job_name}.each{
-                def selected_param_kv = [:]
-                def jobBuilds = it.getBuilds()
-                for (i=0; i < jobBuilds.size(); i++) {
-                    def current_job = jobBuilds[i]
-
-                    if (! current_job.getResult().toString().equals("SUCCESS")) continue
-
-                    def current_parameters = current_job.getAction(ParametersAction)?.parameters
-
-                    def current_param_kv = [:]
-                    current_parameters.each { param ->
-                        current_param_kv[param.name] = param.value
-                    }
-
-                    if (is_sub_map(param_filter, current_param_kv, regex_match)) {
-                        //Merge values in description to param
-                        def job_description_lines = current_job.getDescription().split('<br/>')
-                        def job_description_map = [:]
-                        job_description_lines.each { line ->
-                        	def _kvlist = line.split(/\:[\s]+/)
-                            if (_kvlist.size() == 2) {
-                                job_description_map[_kvlist[0].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'') ] = _kvlist[1].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'')
-                            }
-                        }
-			            output = current_param_kv + job_description_map
-                        output.each { k, v ->
-                            output[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
-                        }
-                        break
-                    }
-                }
-            }// each job
-            return output
-        }//script
-    }//stage
-}
-
-
-return this
