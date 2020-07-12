@@ -392,4 +392,17 @@ def load_upstream_build_data() {
         }//script
     }//stage
 }
+def validate_parameters(def args = [:]) {
+    def UNSET_PARAM = "SET_ME"
+    args.each {
+        k, v ->
+            echo "Validating ${k}"
+            if (v.toString() == UNSET_PARAM) {
+                echo "Parameter ${k} failed validation"
+                currentBuild.displayName = 'Detected unset parameters'
+                currentBuild.result = 'ABORTED'
+                error 'Detected unset parameters (potentially unexposed parameters) - stopping current build'
+            }
+    }
+}
 return this
