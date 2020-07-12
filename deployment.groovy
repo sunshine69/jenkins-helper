@@ -108,7 +108,6 @@ EOF
 def generate_aws_environment() {
     stage('generate_aws_environment') {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: "${PROFILE}", secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID_XVT', credentialsId: "xvt_aws", secretKeyVariable: 'AWS_SECRET_ACCESS_KEY_XVT']]) {
             withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
                 try {
                     //Trying to parse test if ANSIBLE_VAULT_ID is defined by
@@ -136,23 +135,16 @@ mkdir -p ~/.aws
 printf "[$PROFILE]
 output=json
 region=ap-southeast-2
-
-[xvt_aws]
-output=json
-region=ap-southeast-2" > ~/.aws/config
+" > ~/.aws/config
 
 printf "[$PROFILE]
 aws_access_key_id = ${AWS_ACCESS_KEY_ID}
 aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
 
-[xvt_aws]
-aws_access_key_id = ${AWS_ACCESS_KEY_ID_XVT}
-aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY_XVT}
-
 " > ~/.aws/credentials
 
 if [ "x${ROUTE53_AWS_ACCESS_KEY_ID}" != "x" ]; then
-    printf "[xvt_aws_route53]
+  printf "[route53admin]
 aws_access_key_id = ${ROUTE53_AWS_ACCESS_KEY_ID}
 aws_secret_access_key = ${ROUTE53_AWS_SECRET_ACCESS_KEY}
 
@@ -180,7 +172,6 @@ EOF
 '''
           sh 'chmod +x generate_aws_environment.sh'
         }//withCred github
-      }//withCred AWS
       }//withCred AWS
     }//stage
 }
