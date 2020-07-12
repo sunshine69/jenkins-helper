@@ -354,6 +354,12 @@ def load_upstream_build_data() {
     // It also set the global ARTIFACT_DATA object which contains the whole parsed yaml file
 
     //Requires plugin `Copy Artifact Plugin`
+    //This does not work anymore. Jenkins blacklisted the script security thus
+    //u will get
+    //org.jenkinsci.plugins.scriptsecurity.sandbox.RejectedAccessException: No
+    //such field found when trying accessing the field data. Thus you better
+    //copy artifacts in and parse the yml file using your own way in the
+    //build.sh script. Ansible for example can read yaml var file directly.
 
     stage('load_upstream_build_data') {
         script {
@@ -370,8 +376,8 @@ def load_upstream_build_data() {
                 else {
                   copyArtifacts filter: 'artifact_data.yml', fingerprintArtifacts: true, flatten: true, projectName: "${UPSTREAM_JOB_NAME}", selector: specific("${UPSTREAM_BUILD_NUMBER}")
                 }//If
-                // Parsing artifact data
-                def ARTIFACT_DATA = readYaml(file: 'artifact_data.yml')
+                // Parsing artifact data. TODO It wont work, see above comment.
+                ARTIFACT_DATA = readYaml(file: 'artifact_data.yml')
                 ARTIFACT_DATA.each { k, v ->
                     ARTIFACT_DATA[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
                 }
@@ -384,8 +390,6 @@ def load_upstream_build_data() {
                 env.UPSTREAM_BUILD_URL = ARTIFACT_DATA.upstream_build_url ?: (env.UPSTREAM_BUILD_URL ?: null)
                 env.UPSTREAM_JOB_NAME = ARTIFACT_DATA.upstream_job_name ?: (env.UPSTREAM_JOB_NAME ?: null)
                 env.ARTIFACT_CLASS = ARTIFACT_DATA.artifact_class ?: (env.ARTIFACT_CLASS ?: null)
-                env.ARTIFACT_DATA = ARTIFACT_DATA
-
             } catch (Exception e) {
                 echo "Unable to load_upstream_build_data - ${e}"
             }
