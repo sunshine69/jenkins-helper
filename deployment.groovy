@@ -397,4 +397,210 @@ def validate_parameters(def args = [:]) {
             }
     }
 }
+
+def is_sub_map(m0, m1, regex_match=[:]) {
+//Test if a map m0 a sub map of m1. sub map is defined that for all keys in m0
+//m1 must have that key and m1 must have the value that is equal of m0 pair.
+//The value can be match using regex per key - by default is exact match.
+    def filter_keys = m0.keySet()
+    def output = true
+    for (filter_key in filter_keys) {
+        if (! regex_match[filter_key]) {
+            if (! (m1.containsKey(filter_key) && m1[filter_key] == m0[filter_key]) ) {
+                output = false
+                break
+            }
+        }
+        else {
+            def m0_val = m0[filter_key]
+            def m1_val = m1[filter_key]
+            if (! (m1.containsKey(filter_key) && m1_val.matches(".*${m0_val}.*")))  {
+                output = false
+                break
+            }
+        }
+    }
+    return output
+}
+
+def get_build_properties(job_name, param_filter=[:], regex_match=[:]) {
+//Get the param of the last success build of a job_name matching the
+//param_filter map.
+//The regex_match is a dict of 'field_name': true|false where filed_name is in
+//the param_filter to state that we should apply regex match on it or not
+//It actually like wildcard match - will be appended and prepended with .* to the string
+    stage('get_build_param_by_name') {
+        script {
+            def output = [:]
+            def selected_build = null
+
+            Jenkins.instance.getAllItems(Job).findAll() {job -> job.name == job_name}.each{
+                def selected_param_kv = [:]
+                def jobBuilds = it.getBuilds()
+                for (i=0; i < jobBuilds.size(); i++) {
+                    def current_job = jobBuilds[i]
+
+                    if (! current_job.getResult().toString().equals("SUCCESS")) continue
+
+                    def current_parameters = current_job.getAction(ParametersAction)?.parameters
+
+                    def current_param_kv = [:]
+                    current_parameters.each { param ->
+                        current_param_kv[param.name] = param.value
+                    }
+
+                    def job_description_lines = current_job.getDescription().split('<br/>')
+                    def job_description_map = [:]
+                    job_description_lines.each { line ->
+                    def _kvlist = line.split(/\:[\s]+/)
+                    if (_kvlist.size() == 2) {
+                        job_description_map[_kvlist[0].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'') ] = _kvlist[1].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'')
+                        }
+                    }
+	                output = current_param_kv + job_description_map
+                    output.each { k, v ->
+                        output[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
+                    }
+
+                    if (is_sub_map(param_filter, output, regex_match)) {
+                        println("DEBUG: ${output}")
+                        break
+                    }
+                }
+            }// each job
+            return output
+        }//script
+    }//stage
+}
+
+def get_build_param_by_name(job_name, param_filter=[:], regex_match=[:]) {
+//Get the param of the last success build of a job_name matching the
+//param_filter map.
+//The regex_match is a dict of 'field_name': true|false where filed_name is in
+//the param_filter to state that we should apply regex match on it or not
+//It actually like wildcard match - will be appended and prepended with .* to the string
+    stage('get_build_param_by_name') {
+        script {
+            def output = [:]
+            def selected_build = null
+
+            Jenkins.instance.getAllItems(Job).findAll() {job -> job.name == job_name}.each{
+                def selected_param_kv = [:]
+                def jobBuilds = it.getBuilds()
+                for (i=0; i < jobBuilds.size(); i++) {
+                    def current_job = jobBuilds[i]
+
+                    if (! current_job.getResult().toString().equals("SUCCESS")) continue
+
+                    def current_parameters = current_job.getAction(ParametersAction)?.parameters
+
+                    def current_param_kv = [:]
+                    current_parameters.each { param ->
+                        current_param_kv[param.name] = param.value
+                    }
+
+                    if (is_sub_map(param_filter, current_param_kv, regex_match)) {
+                        //Merge values in description to param
+                        def job_description_lines = current_job.getDescription().split('<br/>')
+                        def job_description_map = [:]
+                        job_description_lines.each { line ->
+                        	def _kvlist = line.split(/\:[\s]+/)
+                            if (_kvlist.size() == 2) {
+                                job_description_map[_kvlist[0].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'') ] = _kvlist[1].replaceAll(/^[\s]*/,'').replaceAll(/[\s]*$/,'')
+                            }
+                        }
+			            output = current_param_kv + job_description_map
+                        output.each { k, v ->
+                            output[k] = v.replaceAll(/^"/,'').replaceAll(/"$/,'')
+                        }
+                        break
+                    }
+                }
+            }// each job
+            return output
+        }//script
+    }//stage
+}
+
+/**
+ * This exists primarily because of a bug in Jenkins pipeline that causes
+ * any call to the "properties" closure to overwrite all job property settings,
+ * not just the ones being set.  Therefore, we set all properties that
+ * the generator may have set when it generated this job (or a human).
+ *
+ * @param settingsOverrides a map, see defaults below.
+ * @return
+ */
+def setJobProperties(Map settingsOverrides = [:]) {
+    def settings = [discarder_builds_to_keep:'10', discarder_days_to_keep: '', cron: null, paramsList: [], upstreamTriggers: null, disableConcurrentBuilds: false] + settingsOverrides
+
+//    echo "Setting job properties.  discarder is '${settings.discarder_builds_to_keep}' and cron is '${settings.cron}' (${settings.cron?.getClass()})"
+    def jobProperties = [
+            //these have to be strings:
+            buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: "${settings.discarder_days_to_keep}", numToKeepStr: "${settings.discarder_builds_to_keep}"))
+    ]
+
+    if (settings.cron) {
+        jobProperties << pipelineTriggers([cron(settings.cron)])
+    }
+
+    if (settings.upstreamTriggers) {
+        jobProperties << pipelineTriggers([upstream(settings.upstreamTriggers)])
+    }
+
+    if (settings.disableConcurrentBuilds) {
+        jobProperties << disableConcurrentBuilds()
+    }
+
+    if (settings.paramsList?.size() > 0) {
+        def generatedParams = []
+        settings.paramsList.each { //params are specified as name:default:description
+            def parts = it.split(':', 3).toList() //I need to honor all delimiters but I want a list
+            generatedParams << string(name: "${parts[0]}", defaultValue: "${parts[1] ?: ''}", description: "${parts[2] ?: ''}", trim: true)
+        }
+        jobProperties << parameters(generatedParams)
+    }
+
+    echo "Setting job properties: ${jobProperties}"
+
+    properties(jobProperties)
+}
+
+def run_log_harvest_job() {
+   stage('run_log_harvest_job') {
+   def MULTI_BRANCH = ""
+   def _l = "${JOB_NAME}".split("/")
+   if (_l.length > 1) {
+       MULTI_BRANCH = "yes"
+   } else {
+       MULTI_BRANCH = "no"
+   }
+
+   build job: 'RUN-log-harvest', parameters: [
+      string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+      string(name: 'UPSTREAM_JOB_NAME', value: "${JOB_NAME}"),
+      string(name: 'MULTI_BRANCH', value: MULTI_BRANCH),
+      ],
+      wait: false
+   }
+}
+
+def harvest_log(nsre_url="https://10.100.9.223") {
+    stage('harvest_log') {
+        //This only can run on master. Thus we have to create a downstream job
+        //to be autotrigger to save log into the master and process it.
+        //Currently this func is used for Deploy plan only to deal with ansible
+        //log. The generic log is done through the more generic build plan -
+        //see the func apply_maintenance_policy_per_branch below.
+        withCredentials([string(credentialsId: 'NSRE_JWT_API_KEY', variable: 'NSRE_JWT_API_KEY')]) {
+        sh """nsre -m setup -c /tmp/nsre-\$\$.yaml -url ${nsre_url} -f ${BUILD_TAG}.log -jwtkey ${NSRE_JWT_API_KEY} -appname ${BUILD_TAG}
+              nsre -m tail -c /tmp/nsre-\$\$.yaml
+              rm -f /tmp/nsre-\$\$.yaml
+        """
+        }
+    }
+}
+
+
+
 return this
