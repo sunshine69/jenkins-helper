@@ -56,7 +56,7 @@ def generate_add_user_script(username='') {
             env.my_NAME = sh(returnStdout: true, script: "whoami").trim()
           }
           sh '''cat <<EOF > generate_add_user_script.sh
-#!/bin/sh
+#!/bin/sh -x
 if [ -f "/etc/alpine-release" ]; then
   IS_ALPINE_OS=yes
   if ! \\`grep $my_NAME /etc/passwd >/dev/null 2>&1\\`; then
@@ -109,6 +109,7 @@ fi
 EOF
 '''
           sh 'chmod +x generate_add_user_script.sh'
+          sh 'cat generate_add_user_script.sh'
        }//script
     }//stage
 }
@@ -190,7 +191,7 @@ def run_build_script(arg1=[:]) {
         'docker_entrypoint_opt': '',
         'docker_args_opt': '',
         'docker_extra_opt': '',
-        'docker_image': 'stevekieu/python3-cloud-ansible:2.9.9',
+        'docker_image': 'stevekieu/python3-cloud-ansible:latest',
 //This is will be appended to the list of script to run
         'extra_build_scripts': [],
 //a map 'script_name': 'user_name' to instruct that script is run as the user.
