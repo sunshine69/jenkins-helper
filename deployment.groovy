@@ -58,6 +58,7 @@ def generate_add_user_script(username='') {
           sh '''cat <<EOF > generate_add_user_script.sh
 #!/bin/sh
 if [ -f "/etc/alpine-release" ]; then
+  IS_ALPINE_OS=yes
   if ! \\`grep $my_NAME /etc/passwd >/dev/null 2>&1\\`; then
 	  addgroup -g $my_GID $my_NAME
 	  adduser -u $my_UID -g $my_GID -D -S $my_NAME
@@ -90,12 +91,20 @@ fi
 
 if [ "$DOCKER_GID" != "" ]; then
   if ! \\`grep docker /etc/group >/dev/null 2>&1\\`; then
-      groupadd -g $DOCKER_GID docker
+      if [ "\\${IS_ALPINE_OS}" = "yes" ]; then
+          addgroup -g $DOCKER_GID docker
+      else
+          groupadd -g $DOCKER_GID docker
+      fi
   else
       echo "WARNING - docker group exists in /etc/group file inside the container."
       sed -i "s/docker:x:[\\d]+/docker:x:$DOCKER_GID/" /etc/group
   fi
-  usermod -a -G $DOCKER_GID $my_NAME
+  if [ "\\${IS_ALPINE_OS}" = "yes" ]; then
+    addgroup $my_NAME docker
+  else
+    usermod -a -G $DOCKER_GID $my_NAME
+  fi
 fi
 EOF
 '''
